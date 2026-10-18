@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: islalearn-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: islalearn
+      MYSQL_USER: islalearn
+      MYSQL_PASSWORD: islalearn_dev
+      MYSQL_ROOT_PASSWORD: islalearn_root
+    ports:
+      - "3306:3306"
+    volumes:
+      - islalearn_mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pislalearn_root"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  islalearn_mysql_data:
