@@ -10,39 +10,79 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
 
-import environ
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# ---------------------------------------------------------------------------
+# .env loading (local development only)
+# ---------------------------------------------------------------------------
+# In production (Railway), environment variables are injected by the platform.
+# Locally, we read a backend/.env file if it exists. We do this without
+# django-environ, using a tiny manual parser.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Read environment variables from backend/.env
-env = environ.Env(
-    DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, []),
-    CORS_ALLOWED_ORIGINS=(list, []),
-    JWT_ACCESS_LIFETIME_MINUTES=(int, 60),
-    JWT_REFRESH_LIFETIME_DAYS=(int, 7),
-)
-environ.Env.read_env(BASE_DIR / ".env")
+
+def _load_dotenv(path: Path) -> None:
+    """Load KEY=VALUE pairs from a .env file into os.environ.
+    Existing env vars take precedence (Railway wins over .env).
+    """
+    if not path.exists():
+        return
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env("SECRET_KEY")
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env("DEBUG")
-
-ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+_load_dotenv(BASE_DIR / ".env")
 
 
-# Application definition
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _get_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("true", "1", "yes", "on")
 
+
+def _get_list(name: str, default: list[str] | None = None) -> list[str]:
+    value = os.environ.get(name, "")
+    if not value:
+        return default or []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _get_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
+SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-dev-key-change-me")
+
+DEBUG = _get_bool("DEBUG", default=False)
+
+ALLOWED_HOSTS = _get_list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+
+
+# ---------------------------------------------------------------------------
+# Applications
+# ---------------------------------------------------------------------------
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -91,25 +131,25 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
+# ---------------------------------------------------------------------------
 # Database
-# https://docs.djangoproject.com/en/6.1/ref/settings/#databases
-
+# ---------------------------------------------------------------------------
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": env("DB_NAME", default="islalearn"),
-        "USER": env("DB_USER", default="islalearn"),
-        "PASSWORD": env("DB_PASSWORD", default="islalearn_dev"),
-        "HOST": env("DB_HOST", default="127.0.0.1"),
-        "PORT": env("DB_PORT", default="3306"),
+        "NAME": os.environ.get("DB_NAME", "islalearn"),
+        "USER": os.environ.get("DB_USER", "islalearn"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", "islalearn_dev"),
+        "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
+        "PORT": os.environ.get("DB_PORT", "3306"),
         "OPTIONS": {"charset": "utf8mb4"},
     }
 }
 
 
+# ---------------------------------------------------------------------------
 # Password validation
-# https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
-
+# ---------------------------------------------------------------------------
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -126,9 +166,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# ---------------------------------------------------------------------------
 # Internationalization
-# https://docs.djangoproject.com/en/6.1/topics/i18n/
-
+# ---------------------------------------------------------------------------
 LANGUAGE_CODE = 'en-us'
 
 TIME_ZONE = 'UTC'
@@ -138,24 +178,20 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/6.1/howto/static-files/
-
+# ---------------------------------------------------------------------------
+# Static / Media
+# ---------------------------------------------------------------------------
 STATIC_URL = 'static/'
 
-# Media files (user uploads — profile pictures, etc.)
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/6.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
+# ---------------------------------------------------------------------------
 # Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
+# ---------------------------------------------------------------------------
 MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
@@ -168,11 +204,13 @@ MAILERS = {
 # ---------------------------------------------------------------------------
 AUTH_USER_MODEL = "users.User"
 
+
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+CORS_ALLOWED_ORIGINS = _get_list("CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_CREDENTIALS = True
+
 
 # ---------------------------------------------------------------------------
 # Django REST Framework
@@ -188,12 +226,17 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
 }
 
+
 # ---------------------------------------------------------------------------
 # JWT
 # ---------------------------------------------------------------------------
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env("JWT_ACCESS_LIFETIME_MINUTES")),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=env("JWT_REFRESH_LIFETIME_DAYS")),
+    "ACCESS_TOKEN_LIFETIME": timedelta(
+        minutes=_get_int("JWT_ACCESS_LIFETIME_MINUTES", default=60)
+    ),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=_get_int("JWT_REFRESH_LIFETIME_DAYS", default=7)
+    ),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
