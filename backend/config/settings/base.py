@@ -16,18 +16,15 @@ from datetime import timedelta
 
 
 # ---------------------------------------------------------------------------
-# .env loading (local development only)
+# Paths
 # ---------------------------------------------------------------------------
-# In production (Railway), environment variables are injected by the platform.
-# Locally, we read a backend/.env file if it exists. We do this without
-# django-environ, using a tiny manual parser.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
+# ---------------------------------------------------------------------------
+# .env loading (local development only)
+# ---------------------------------------------------------------------------
 def _load_dotenv(path: Path) -> None:
-    """Load KEY=VALUE pairs from a .env file into os.environ.
-    Existing env vars take precedence (Railway wins over .env).
-    """
     if not path.exists():
         return
     for raw_line in path.read_text().splitlines():
@@ -44,28 +41,44 @@ _load_dotenv(BASE_DIR / ".env")
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Env helpers (quote-safe, whitespace-safe)
 # ---------------------------------------------------------------------------
-def _get_bool(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
+def _clean(value: str) -> str:
+    """Strip whitespace and a single pair of surrounding quotes."""
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        return value[1:-1]
+    return value
+
+
+def _get_str(name: str, default: str = "") -> str:
+    raw = os.environ.get(name)
+    if raw is None:
         return default
-    return value.strip().lower() in ("true", "1", "yes", "on")
+    return _clean(raw)
+
+
+def _get_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return _clean(raw).lower() in ("true", "1", "yes", "on")
 
 
 def _get_list(name: str, default: list[str] | None = None) -> list[str]:
-    value = os.environ.get(name, "")
-    if not value:
+    raw = os.environ.get(name, "")
+    if not raw:
         return default or []
-    return [item.strip() for item in value.split(",") if item.strip()]
+    cleaned = _clean(raw)
+    return [item.strip() for item in cleaned.split(",") if item.strip()]
 
 
 def _get_int(name: str, default: int) -> int:
-    value = os.environ.get(name)
-    if value is None:
+    raw = os.environ.get(name)
+    if raw is None:
         return default
     try:
-        return int(value)
+        return int(_clean(raw))
     except ValueError:
         return default
 
@@ -73,7 +86,7 @@ def _get_int(name: str, default: int) -> int:
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
-SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-dev-key-change-me")
+SECRET_KEY = _get_str("SECRET_KEY", default="unsafe-dev-key-change-me")
 
 DEBUG = _get_bool("DEBUG", default=False)
 
@@ -137,11 +150,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": os.environ.get("DB_NAME", "islalearn"),
-        "USER": os.environ.get("DB_USER", "islalearn"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", "islalearn_dev"),
-        "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
-        "PORT": os.environ.get("DB_PORT", "3306"),
+        "NAME": _get_str("DB_NAME", "islalearn"),
+        "USER": _get_str("DB_USER", "islalearn"),
+        "PASSWORD": _get_str("DB_PASSWORD", "islalearn_dev"),
+        "HOST": _get_str("DB_HOST", "127.0.0.1"),
+        "PORT": _get_str("DB_PORT", "3306"),
         "OPTIONS": {"charset": "utf8mb4"},
     }
 }
