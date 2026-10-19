@@ -138,7 +138,7 @@ export function HeroSection({
         </motion.div>
 
         <motion.div
-          className="relative h-[400px] w-full sm:h-[500px]"
+          className="relative h-100 w-full sm:h-125"
           variants={containerVariants}
           initial="hidden"
           animate="visible"

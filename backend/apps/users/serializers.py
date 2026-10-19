@@ -3,11 +3,6 @@ from rest_framework import serializers
 from .models import User
 
 
-from rest_framework import serializers
-
-from .models import User
-
-
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     age_confirmed = serializers.BooleanField(write_only=True)
@@ -28,22 +23,23 @@ class RegisterSerializer(serializers.ModelSerializer):
             )
         return value
 
-    def validate(self, attrs):
+    def to_internal_value(self, data):
         try:
-            attrs = super().validate(attrs)
-        except serializers.ValidationError:
+            return super().to_internal_value(data)
+        except serializers.ValidationError as exc:
+            if (
+                isinstance(exc.detail, dict)
+                and set(exc.detail.keys()) == {"age_confirmed"}
+            ):
+                raise
             raise serializers.ValidationError({"detail": self.GENERIC_ERROR})
-        return attrs
 
     def create(self, validated_data):
         validated_data.pop("age_confirmed")
         password = validated_data.pop("password")
-        try:
-            user = User(**validated_data)
-            user.set_password(password)
-            user.save()
-        except Exception:
-            raise serializers.ValidationError({"detail": self.GENERIC_ERROR})
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
         return user
 
 
