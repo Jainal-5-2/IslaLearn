@@ -122,6 +122,12 @@ TopicPage
   - topic (FK), order, page_type (text|video|quiz)
   - content (JSONField: text body / video URL / quiz questions)
 
+TopicProgress (planned — Phase 2.5)
+  - user (FK), topic (FK)
+  - last_page_index (int), last_visited_at
+  - completed_at (nullable)
+  - unique_together = (user, topic)
+
 Request (1:1 demand)
   - tutee (FK User), subject (FK), description
   - preferred_time, status (open|closed)
@@ -179,6 +185,7 @@ Topics
   POST   /api/topics/{id}/pages/   (add page)
   PATCH  /api/topics/{id}/pages/{page_id}/
   DELETE /api/topics/{id}/pages/{page_id}/
+  POST   /api/topics/{id}/progress/   (planned — Phase 2.5)
 
 Requests (1:1)
   GET    /api/requests/            (browse open requests)
@@ -232,38 +239,58 @@ Reports
 
 ### Build Order (Solo-Friendly Sequence)
 
-**Phase 1 — Foundation**
+**Phase 1 — Foundation** `[DONE]`
 1. Set up Django project + MySQL + custom User model + JWT auth.
 2. Set up Next.js + Tailwind + API helper + login/register pages.
 3. Configure CORS. Verify end-to-end auth works via Postman and the browser.
 
-**Phase 2 — Taxonomy & Content**
+**Phase 2 — Taxonomy & Content** `[DONE]`
 4. Build `Subject` model + seed ~30 CS subjects.
 5. Build `Topic` + `TopicPage` models with `free_page_count` logic.
 6. Build Topic API (CRUD, page ordering, lock flags).
 7. Build Topic browse page + Topic reader (with quiz rendering and lock gate).
+8. Build Topic create + edit pages.
 
-**Phase 3 — Demand Flow (Requests)**
-8. Build `Request` + `Application` models and API.
-9. Build request browse/post pages (tutee) and apply flow (tutor).
-10. Build accept/reject flow.
+**Phase 2.5 — Topic Progress** `[PLANNED, DEFERRED UNTIL AFTER PHASE 3]`
+
+*Rationale:* read-tracking makes the dashboard meaningful and adds a natural reason for users to return. Deferred so the Request flow can be finished first; the model is additive and requires no migration of existing data.
+
+- New `TopicProgress` model: `user` (FK), `topic` (FK), `last_page_index`, `last_visited_at`, `completed_at`.
+- `unique_together = (user, topic)`.
+- New endpoint: `POST /api/topics/{id}/progress/` (upsert last page index; set `completed_at` on last page).
+- Extend `TopicDetailSerializer` to include a per-user progress object (hidden when the user is the creator).
+- Reader: auto-save on page change (debounced); resume to last page on load; show a small progress bar in the sidebar header.
+- Browse `/topics`: show a "Continue" badge on in-progress topics; add an "In progress" filter alongside the subject filter.
+- Dashboard: add a "Continue learning" card (up to 3 in-progress topics) and an "In progress" stat card.
+
+*Decisions locked in:*
+- Completion = reaching the last page (quiz tracking deferred).
+- No progress for the topic creator.
+- "In progress" filter shows only topics with progress > 0.
+- Server-side storage (syncs across devices).
+- No reset button in v1.
+
+**Phase 3 — Demand Flow (Requests)** `[NEXT]`
+9. Build `Request` + `Application` models and API.
+10. Build request browse/post pages (tutee) and apply flow (tutor).
+11. Build accept/reject flow.
 
 **Phase 4 — Supply Flow (Broadcasts)**
-11. Integrate Daily.co: room creation API + React SDK.
-12. Build `Broadcast` + `BroadcastParticipant` models and API.
-13. Build broadcast browse/create/join pages + live room page.
+12. Integrate Daily.co: room creation API + React SDK.
+13. Build `Broadcast` + `BroadcastParticipant` models and API.
+14. Build broadcast browse/create/join pages + live room page.
 
 **Phase 5 — Trust & Polish**
-14. Build `Session` + `Review` + `Report` models and API.
-15. Build session-complete flow + review submission + profile reviews.
-16. Build report button.
-17. Polish UI, add empty states, loading states, error handling.
+15. Build `Session` + `Review` + `Report` models and API.
+16. Build session-complete flow + review submission + profile reviews.
+17. Build report button.
+18. Polish UI, add empty states, loading states, error handling.
 
 **Phase 6 — Seed & Launch Prep**
-18. Seed 5–10 Topics manually (act as the first tutor).
-19. Schedule 2–3 Broadcasts manually to make the platform feel alive.
-20. Invite 10–20 BaSU CS classmates to test.
-21. Write a simple privacy policy and ToS (18+ checkbox text).
+19. Seed 5–10 Topics manually (act as the first tutor).
+20. Schedule 2–3 Broadcasts manually to make the platform feel alive.
+21. Invite 10–20 BaSU CS classmates to test.
+22. Write a simple privacy policy and ToS (18+ checkbox text).
 
 ### Explicitly Deferred (v2+)
 
@@ -277,3 +304,4 @@ Reports
 - Mobile apps
 - Multi-Topic "Course" programs
 - Video hosting (we link/embed, not host)
+- Topic progress: per-page granularity, quiz completion tracking, certificate/achievement badges

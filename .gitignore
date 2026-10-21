@@ -50,3 +50,5 @@ backend/media/
 
 # ===== Docker =====
 *.pid
+
+digest.txt
