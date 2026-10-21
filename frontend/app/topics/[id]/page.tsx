@@ -29,7 +29,6 @@ import { Footer } from "@/components/footer";
 import { FullPageLoader } from "@/components/full-page-loader";
 import { cn } from "@/lib/utils";
 
-// ---------- Wrapper (Static) ----------
 export default function Page() {
   return (
     <Suspense fallback={<FullPageLoader message="Loading topic..." />}>
@@ -38,7 +37,6 @@ export default function Page() {
   );
 }
 
-// ---------- Main Reader Component (Uses useParams) ----------
 function TopicReaderPage() {
   const params = useParams();
   const router = useRouter();
@@ -80,7 +78,6 @@ function TopicReaderPage() {
     loadData();
   }, [topicId, router]);
 
-  // Close sidebar on page change (mobile)
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [activePageIndex]);
@@ -122,8 +119,8 @@ function TopicReaderPage() {
   };
 
   return (
-    <main className="min-h-screen bg-background flex flex-col lg:flex-row">
-      {/* Mobile Top Bar */}
+    <div className="flex flex-col min-h-screen bg-background">
+      {/* Mobile header */}
       <div className="lg:hidden sticky top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <button
           onClick={() => setIsSidebarOpen(true)}
@@ -147,188 +144,201 @@ function TopicReaderPage() {
         </div>
       </div>
 
-      {/* Sidebar Backdrop (mobile only) */}
-      {isSidebarOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/40 z-40"
-          onClick={() => setIsSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          "w-full lg:w-80 lg:border-r lg:border-b-0 border-b border-border bg-card flex flex-col lg:h-screen lg:sticky lg:top-0",
-          "fixed lg:static inset-y-0 left-0 z-50 lg:z-auto max-w-[85vw] sm:max-w-sm transition-transform duration-300",
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        )}
-      >
-        <div className="p-6 border-b border-border flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-4">
-              <Logo href="/dashboard" size={32} showText={false} />
-              <Link
-                href="/topics"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                &larr; All Topics
-              </Link>
-            </div>
-            <h1 className="text-xl font-bold leading-tight mb-1 truncate">
-              {topic.title}
-            </h1>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="bg-muted px-2 py-0.5 rounded truncate">
-                {topic.subject.name}
-              </span>
-              <span className="truncate">by {topic.created_by.username}</span>
-            </div>
-          </div>
-          <button
+      {/* 
+        Middle Row:
+        flex-1 makes it stretch to fill the available space above the footer.
+        lg:flex-row puts the sidebar and content side-by-side on desktop.
+      */}
+      <div className="flex flex-1 lg:flex-row min-h-0">
+        {/* Mobile backdrop */}
+        {isSidebarOpen && (
+          <div
+            className="lg:hidden fixed inset-0 bg-black/40 z-40"
             onClick={() => setIsSidebarOpen(false)}
-            className="lg:hidden text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            aria-label="Close contents"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+            aria-hidden="true"
+          />
+        )}
 
-        <div className="flex-1 overflow-y-auto p-4">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">
-            Pages
-          </h2>
-          <nav className="space-y-1">
-            {pages.map((page, index) => (
-              <button
-                key={page.id}
-                onClick={() => handleSelectPage(index)}
-                className={cn(
-                  "w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between transition-colors",
-                  index === activePageIndex
-                    ? "bg-accent/10 text-accent font-medium"
-                    : "text-foreground hover:bg-muted"
-                )}
-              >
-                <span className="flex items-center gap-2 truncate">
-                  <span className="text-xs text-muted-foreground w-4">
-                    {index + 1}.
-                  </span>
-                  <span className="flex items-center gap-2 truncate">
-                    {page.page_type === "text" && (
-                      <FileText className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    {page.page_type === "video" && (
-                      <VideoIcon className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    {page.page_type === "quiz" && (
-                      <ClipboardList className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    <span className="truncate capitalize">{page.page_type}</span>
-                  </span>
+        {/* Sidebar: 
+            sticky top-0 on desktop so it stays in view when scrolling.
+            h-screen makes it viewport height.
+        */}
+        <aside
+          className={cn(
+            "bg-card border-border flex flex-col",
+            "fixed lg:sticky inset-y-0 lg:inset-y-auto left-0 z-50 lg:z-auto w-80 max-w-[85vw] sm:max-w-sm transition-transform duration-300",
+            isSidebarOpen
+              ? "translate-x-0"
+              : "-translate-x-full lg:translate-x-0",
+            "lg:w-80 lg:border-r lg:top-0 lg:h-screen lg:shrink-0"
+          )}
+        >
+          <div className="p-6 border-b border-border flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-4">
+                <Logo href="/dashboard" size={32} showText={false} />
+                <Link
+                  href="/topics"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  &larr; All Topics
+                </Link>
+              </div>
+              <h1 className="text-xl font-bold leading-tight mb-1 truncate">
+                {topic.title}
+              </h1>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="bg-muted px-2 py-0.5 rounded truncate">
+                  {topic.subject.name}
                 </span>
-                {page.is_locked && (
-                  <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
+                <span className="truncate">by {topic.created_by.username}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="lg:hidden text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              aria-label="Close contents"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
 
-        {isOwner && (
-          <div className="p-4 border-t border-border bg-muted/30">
-            <p className="text-xs text-muted-foreground mb-2">
-              You are the creator.
-            </p>
-            <div className="flex flex-col gap-2">
+          <div className="flex-1 overflow-y-auto p-4">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">
+              Pages
+            </h2>
+            <nav className="space-y-1">
+              {pages.map((page, index) => (
+                <button
+                  key={page.id}
+                  onClick={() => handleSelectPage(index)}
+                  className={cn(
+                    "w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between transition-colors",
+                    index === activePageIndex
+                      ? "bg-accent/10 text-accent font-medium"
+                      : "text-foreground hover:bg-muted"
+                  )}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <span className="text-xs text-muted-foreground w-4">
+                      {index + 1}.
+                    </span>
+                    <span className="flex items-center gap-2 truncate">
+                      {page.page_type === "text" && (
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {page.page_type === "video" && (
+                        <VideoIcon className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {page.page_type === "quiz" && (
+                        <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <span className="truncate capitalize">
+                        {page.page_type}
+                      </span>
+                    </span>
+                  </span>
+                  {page.is_locked && (
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  )}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {isOwner && (
+            <div className="p-4 border-t border-border bg-muted/30">
+              <p className="text-xs text-muted-foreground mb-2">
+                You are the creator.
+              </p>
               <Link
                 href={`/topics/${topic.id}/edit`}
-                className="w-full text-center text-sm bg-background border border-border hover:bg-muted px-3 py-2 rounded-md font-medium transition-colors"
+                className="block w-full text-center text-sm bg-background border border-border hover:bg-muted px-3 py-2 rounded-md font-medium transition-colors"
               >
                 Edit Topic & Pages
               </Link>
             </div>
-          </div>
-        )}
-      </aside>
+          )}
+        </aside>
 
-      {/* Main Content Area */}
-      <section className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-6 lg:px-12 pt-6 lg:pt-12">
-        {!activePage ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center py-20">
-            <h2 className="text-2xl font-bold mb-2">This topic is empty</h2>
-            <p className="text-muted-foreground mb-6">
-              {isOwner
-                ? "Add your first page to get started."
-                : "The creator hasn't added any pages yet."}
-            </p>
-            {isOwner && (
-              <Link
-                href={`/topics/${topic.id}/edit`}
-                className="bg-accent text-accent-foreground px-4 py-2 rounded-md font-medium hover:bg-accent/90"
-              >
-                + Add Page
-              </Link>
+        {/* Main content */}
+        <section className="flex-1 min-w-0 px-6 lg:px-12 pt-6 lg:pt-12 pb-12">
+          <div className="max-w-3xl mx-auto w-full min-w-0">
+            {!activePage ? (
+              <div className="text-center py-20">
+                <h2 className="text-2xl font-bold mb-2">This topic is empty</h2>
+                <p className="text-muted-foreground mb-6">
+                  {isOwner
+                    ? "Add your first page to get started."
+                    : "The creator hasn't added any pages yet."}
+                </p>
+                {isOwner && (
+                  <Link
+                    href={`/topics/${topic.id}/edit`}
+                    className="inline-block bg-accent text-accent-foreground px-4 py-2 rounded-md font-medium hover:bg-accent/90"
+                  >
+                    + Add Page
+                  </Link>
+                )}
+              </div>
+            ) : activePage.is_locked ? (
+              <LockGate page={activePage} />
+            ) : (
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activePage.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="min-w-0"
+                >
+                  <div className="mb-6 hidden lg:block">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Page {activePageIndex + 1} of {pages.length}
+                    </span>
+                  </div>
+
+                  <div className="min-w-0">
+                    {activePage.page_type === "text" && (
+                      <TextPageRenderer content={activePage.content} />
+                    )}
+                    {activePage.page_type === "video" && (
+                      <VideoPageRenderer content={activePage.content} />
+                    )}
+                    {activePage.page_type === "quiz" && (
+                      <QuizPageRenderer content={activePage.content} />
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center mt-12 pt-6 border-t border-border">
+                    <button
+                      onClick={handlePrev}
+                      disabled={activePageIndex === 0}
+                      className="inline-flex items-center gap-1 h-10 px-4 rounded-md border border-border hover:bg-muted font-medium disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </button>
+                    <button
+                      onClick={handleNext}
+                      disabled={activePageIndex === pages.length - 1}
+                      className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-accent text-accent-foreground hover:bg-accent/90 font-medium disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
             )}
           </div>
-        ) : activePage.is_locked ? (
-          <LockGate page={activePage} />
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activePage.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="flex-1 flex flex-col"
-            >
-              <div className="mb-6 hidden lg:block">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Page {activePageIndex + 1} of {pages.length}
-                </span>
-              </div>
+        </section>
+      </div>
 
-              <div className="flex-1">
-                {activePage.page_type === "text" && (
-                  <TextPageRenderer content={activePage.content} />
-                )}
-                {activePage.page_type === "video" && (
-                  <VideoPageRenderer content={activePage.content} />
-                )}
-                {activePage.page_type === "quiz" && (
-                  <QuizPageRenderer content={activePage.content} />
-                )}
-              </div>
-
-              {/* Navigation Buttons */}
-              <div className="flex justify-between items-center mt-12 pt-6 border-t border-border">
-                <button
-                  onClick={handlePrev}
-                  disabled={activePageIndex === 0}
-                  className="inline-flex items-center gap-1 h-10 px-4 rounded-md border border-border hover:bg-muted font-medium disabled:opacity-50 disabled:pointer-events-none transition-colors"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </button>
-                <button
-                  onClick={handleNext}
-                  disabled={activePageIndex === pages.length - 1}
-                  className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-accent text-accent-foreground hover:bg-accent/90 font-medium disabled:opacity-50 disabled:pointer-events-none transition-colors"
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        )}
-
-        <div className="mt-12">
-          <Footer isLoggedIn />
-        </div>
-      </section>
-    </main>
+      {/* Footer */}
+      <Footer isLoggedIn />
+    </div>
   );
 }
 
@@ -336,7 +346,7 @@ function TopicReaderPage() {
 
 function LockGate({ page }: { page: TopicPage }) {
   return (
-    <div className="flex-1 flex items-center justify-center p-6">
+    <div className="flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center shadow-sm">
         <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-6">
           <Lock className="h-7 w-7 text-muted-foreground" />
@@ -360,9 +370,9 @@ function LockGate({ page }: { page: TopicPage }) {
 
 function TextPageRenderer({ content }: { content: any }) {
   return (
-    <div className="prose prose-neutral dark:prose-invert max-w-none">
+    <div className="prose prose-neutral dark:prose-invert max-w-none min-w-0">
       {content?.body ? (
-        <div className="whitespace-pre-wrap text-lg leading-relaxed text-foreground">
+        <div className="whitespace-pre-wrap break-words text-lg leading-relaxed text-foreground">
           {content.body}
         </div>
       ) : (
@@ -387,7 +397,7 @@ function VideoPageRenderer({ content }: { content: any }) {
   }
 
   return (
-    <div className="aspect-video w-full rounded-xl overflow-hidden border border-border bg-black">
+    <div className="aspect-video w-full max-w-full rounded-xl overflow-hidden border border-border bg-black">
       <iframe
         src={embedUrl}
         title="Topic Video"
@@ -437,7 +447,7 @@ function QuizPageRenderer({ content }: { content: any }) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6 min-w-0">
       <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
         <span>
           Question {currentQIndex + 1} of {questions.length}
@@ -445,8 +455,8 @@ function QuizPageRenderer({ content }: { content: any }) {
         <span>Score: {score}</span>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-6">
-        <h3 className="text-xl font-semibold mb-6">{q.question}</h3>
+      <div className="bg-card border border-border rounded-xl p-6 min-w-0">
+        <h3 className="text-xl font-semibold mb-6 break-words">{q.question}</h3>
 
         <div className="space-y-3">
           {q.options.map((opt: string, i: number) => {
@@ -470,18 +480,18 @@ function QuizPageRenderer({ content }: { content: any }) {
                 onClick={() => !isAnswered && setSelectedOption(i)}
                 disabled={isAnswered}
                 className={cn(
-                  "w-full text-left px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-between",
+                  "w-full text-left px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-between gap-2 min-w-0",
                   optionClass
                 )}
               >
-                <span>{opt}</span>
+                <span className="break-words min-w-0">{opt}</span>
                 {isAnswered && isCorrect && (
-                  <span className="text-green-600 text-sm font-bold">
+                  <span className="text-green-600 text-sm font-bold shrink-0">
                     Correct
                   </span>
                 )}
                 {isAnswered && isSelected && !isCorrect && (
-                  <span className="text-red-600 text-sm font-bold">
+                  <span className="text-red-600 text-sm font-bold shrink-0">
                     Incorrect
                   </span>
                 )}

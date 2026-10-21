@@ -23,20 +23,23 @@ class TopicListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        queryset = Topic.objects.select_related("subject", "created_by").prefetch_related("pages")
-        
-        # Filter by subject ID if provided (e.g., /api/topics/?subject=1)
+        queryset = Topic.objects.select_related(
+            "subject", "created_by"
+        ).prefetch_related("pages")
+
         subject_id = self.request.query_params.get("subject")
         if subject_id:
             queryset = queryset.filter(subject_id=subject_id)
-            
-        # Regular users only see published topics, creators see their own drafts
+
         if self.request.user.is_authenticated:
             from django.db.models import Q
-            queryset = queryset.filter(Q(is_published=True) | Q(created_by=self.request.user))
+
+            queryset = queryset.filter(
+                Q(is_published=True) | Q(created_by=self.request.user)
+            )
         else:
             queryset = queryset.filter(is_published=True)
-            
+
         return queryset
 
     def get_serializer_class(self):
@@ -44,13 +47,26 @@ class TopicListCreateView(generics.ListCreateAPIView):
             return TopicCreateUpdateSerializer
         return TopicListSerializer
 
-    def perform_create(self, serializer):
-        # The creator is automatically set to the logged-in user
-        serializer.save(created_by=self.request.user)
+    def create(self, request, *args, **kwargs):
+        # Validate + save with the write serializer
+        write_serializer = self.get_serializer(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        topic = write_serializer.save(created_by=request.user)
+
+        # Return the full detail representation (includes id, subject, created_by, pages, etc.)
+        read_serializer = TopicDetailSerializer(
+            topic, context=self.get_serializer_context()
+        )
+        headers = self.get_success_headers(read_serializer.data)
+        return Response(
+            read_serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
 
 
 class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Topic.objects.select_related("subject", "created_by").prefetch_related("pages")
+    queryset = Topic.objects.select_related("subject", "created_by").prefetch_related(
+        "pages"
+    )
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
     def get_serializer_class(self):
@@ -63,7 +79,9 @@ class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Only the creator can edit or delete
         if request.method in ["PUT", "PATCH", "DELETE"]:
             if obj.created_by != request.user:
-                raise PermissionDenied("You do not have permission to modify this topic.")
+                raise PermissionDenied(
+                    "You do not have permission to modify this topic."
+                )
 
 
 class TopicPageListCreateView(generics.ListCreateAPIView):
@@ -77,8 +95,9 @@ class TopicPageListCreateView(generics.ListCreateAPIView):
             topic = Topic.objects.get(id=topic_id)
         except Topic.DoesNotExist:
             from rest_framework.exceptions import NotFound
+
             raise NotFound("Topic not found.")
-            
+
         if self.request.method == "POST" and topic.created_by != self.request.user:
             raise PermissionDenied("You can only add pages to your own topics.")
         return topic
@@ -111,4 +130,6 @@ class TopicPageDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Only the topic creator can edit/delete pages
         if request.method in ["PUT", "PATCH", "DELETE"]:
             if obj.topic.created_by != request.user:
-                raise PermissionDenied("You do not have permission to modify this page.")
+                raise PermissionDenied(
+                    "You do not have permission to modify this page."
+                )
