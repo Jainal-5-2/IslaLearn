@@ -15,7 +15,6 @@ import {
     isLoggedIn,
 } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
-import { FullPageLoader } from "@/components/full-page-loader";
 
 export default function NewTopicPage() {
     const router = useRouter();
@@ -74,10 +73,6 @@ export default function NewTopicPage() {
         } finally {
             setSubmitting(false);
         }
-    }
-
-    if (isCheckingAuth) {
-        return <FullPageLoader message="Loading..." />;
     }
 
     if (!user) return null;

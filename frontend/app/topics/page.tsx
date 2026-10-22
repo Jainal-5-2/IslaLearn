@@ -16,7 +16,6 @@ import {
     isLoggedIn,
 } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
-import { FullPageLoader } from "@/components/full-page-loader";
 import { SubjectCombobox } from "@/components/subject-combobox";
 
 const containerVariants = {
@@ -81,10 +80,6 @@ export default function TopicsPage() {
     function handleLogout() {
         logout();
         router.replace("/login");
-    }
-
-    if (isCheckingAuth) {
-        return <FullPageLoader message="Loading topics..." />;
     }
 
     if (!user) return null;

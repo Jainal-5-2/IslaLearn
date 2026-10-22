@@ -1,5 +1,5 @@
 import { apiFetch, clearTokens, setTokens } from "./client";
-import type { LoginResponse, User } from "./types.ts";
+import type { LoginResponse, User } from "./types";
 
 export async function register(
   username: string,

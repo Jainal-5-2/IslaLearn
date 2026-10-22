@@ -1,5 +1,3 @@
-// Re-export everything so existing imports from "@/lib/api" keep working.
-
 // Client / tokens / errors
 export {
   apiFetch,
@@ -18,6 +16,10 @@ export type {
   Topic,
   TopicPage,
   LoginResponse,
+  RequestStatus,
+  ApplicationStatus,
+  Application,
+  TutoringRequest,
 } from "./types";
 
 // Auth
@@ -41,3 +43,14 @@ export {
   updateTopicPage,
   deleteTopicPage,
 } from "./pages";
+
+// Requests
+export {
+  getRequests,
+  getRequest,
+  createRequest,
+  updateRequest,
+  closeRequest,
+  applyToRequest,
+  decideApplication,
+} from "./requests";

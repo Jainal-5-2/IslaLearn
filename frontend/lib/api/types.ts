@@ -44,3 +44,31 @@ export type LoginResponse = {
   access: string;
   refresh: string;
 };
+
+// ---------- Requests ----------
+export type RequestStatus = "open" | "closed";
+export type ApplicationStatus = "pending" | "accepted" | "rejected";
+
+export type Application = {
+  id: number;
+  tutor: User;
+  message: string;
+  status: ApplicationStatus;
+  created_at: string;
+};
+
+export type TutoringRequest = {
+  id: number;
+  tutee: User;
+  subject: Pick<Subject, "id" | "name">;
+  description: string;
+  preferred_time: string | null;
+  status: RequestStatus;
+  application_count?: number;
+  applications?: Application[];
+  can_edit?: boolean;
+  subject_locked?: boolean;
+  my_application_status?: ApplicationStatus | null;
+  created_at: string;
+  updated_at?: string;
+};

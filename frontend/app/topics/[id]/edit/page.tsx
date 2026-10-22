@@ -18,19 +18,10 @@ import {
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Footer } from "@/components/footer";
-import { FullPageLoader } from "@/components/full-page-loader";
 import { TopicForm } from "@/components/topic-form";
 import { PageList } from "@/components/page-list";
 import { PageEditor } from "@/components/page-editor";
 import { cn } from "@/lib/utils";
-
-export default function Page() {
-    return (
-        <Suspense fallback={<FullPageLoader message="Loading editor..." />}>
-            <TopicEditPage />
-        </Suspense>
-    );
-}
 
 function TopicEditPage() {
     const params = useParams();
@@ -81,10 +72,6 @@ function TopicEditPage() {
 
         loadData();
     }, [topicId, router, refreshKey]);
-
-    if (loading) {
-        return <FullPageLoader message="Loading editor..." />;
-    }
 
     if (error || !topic) {
         return (

@@ -26,16 +26,7 @@ import {
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Footer } from "@/components/footer";
-import { FullPageLoader } from "@/components/full-page-loader";
 import { cn } from "@/lib/utils";
-
-export default function Page() {
-  return (
-    <Suspense fallback={<FullPageLoader message="Loading topic..." />}>
-      <TopicReaderPage />
-    </Suspense>
-  );
-}
 
 function TopicReaderPage() {
   const params = useParams();
@@ -81,10 +72,6 @@ function TopicReaderPage() {
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [activePageIndex]);
-
-  if (loading) {
-    return <FullPageLoader message="Loading topic..." />;
-  }
 
   if (error || !topic) {
     return (

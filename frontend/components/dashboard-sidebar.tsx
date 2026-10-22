@@ -26,6 +26,14 @@ interface DashboardSidebarProps {
   onLogout: () => void;
 }
 
+type NavItem = {
+  Icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  href: string;
+  /** Extra predicate to claim the route exclusively over siblings. */
+  owns?: (pathname: string) => boolean;
+};
+
 export function DashboardSidebar({
   user,
   open,
@@ -36,23 +44,55 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const pathname = usePathname();
 
-  const navItems = [
+  // Order matters: more specific routes first so they claim the path
+  // before a broader sibling (e.g. /topics/new before /topics).
+  const navItems: NavItem[] = [
     { Icon: Home, title: "Dashboard", href: "/dashboard" },
-    { Icon: BookOpen, title: "Browse Topics", href: "/topics" },
-    { Icon: Plus, title: "Create Topic", href: "/topics/new" },
+    {
+      Icon: Plus,
+      title: "Create Topic",
+      href: "/topics/new",
+      owns: (p) => p === "/topics/new",
+    },
+    {
+      Icon: BookOpen,
+      title: "Browse Topics",
+      href: "/topics",
+      owns: (p) =>
+        p === "/topics" ||
+        (/^\/topics\/\d+/.test(p) && !p.endsWith("/edit") && p !== "/topics/new"),
+    },
+    {
+      Icon: Plus,
+      title: "Post Request",
+      href: "/requests/new",
+      owns: (p) => p === "/requests/new",
+    },
+    {
+      Icon: MessageSquare,
+      title: "Requests",
+      href: "/requests",
+      owns: (p) =>
+        p === "/requests" || /^\/requests\/\d+/.test(p),
+    },
     { Icon: Video, title: "Broadcasts", href: "/broadcasts" },
-    { Icon: MessageSquare, title: "Requests", href: "/requests" },
   ];
 
-  const isActive = (href: string) => {
-    if (href === "/dashboard") return pathname === "/dashboard";
-    if (href === "/topics/new") return pathname === "/topics/new";
-    // For /topics, don't match /topics/new or /topics/[id]
-    if (href === "/topics") {
-      return pathname === "/topics" || /^\/topics\/\d+/.test(pathname);
+  /**
+   * Only the item whose `owns` predicate matches (or the only item whose
+   * href equals the pathname) is active. This prevents sibling items like
+   * "Browse Topics" and "Create Topic" from both lighting up on /topics/new.
+   */
+  const activeHref = (() => {
+    for (const item of navItems) {
+      if (item.owns) {
+        if (item.owns(pathname)) return item.href;
+      } else if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+        return item.href;
+      }
     }
-    return pathname.startsWith(href);
-  };
+    return null;
+  })();
 
   return (
     <>
@@ -67,12 +107,9 @@ export function DashboardSidebar({
 
       <nav
         className={cn(
-          // Base: flex column, full height
           "flex flex-col bg-card border-r border-border transition-transform duration-300 ease-in-out",
-          // Desktop: sticky column, collapsible via width
           "lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:translate-x-0",
           open ? "lg:w-64" : "lg:w-16",
-          // Mobile: fixed drawer
           "fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] h-screen",
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -107,13 +144,13 @@ export function DashboardSidebar({
         <div className="flex-1 overflow-y-auto px-2 py-4">
           {/* Nav Items */}
           <div className="space-y-1 mb-6">
-            {navItems.map(({ Icon, title, href }) => (
+            {navItems.map((item) => (
               <SidebarItem
-                key={title}
-                Icon={Icon}
-                title={title}
-                href={href}
-                isSelected={isActive(href)}
+                key={item.href}
+                Icon={item.Icon}
+                title={item.title}
+                href={item.href}
+                isSelected={activeHref === item.href}
                 onClick={onMobileClose}
                 open={open || isMobileOpen}
               />
@@ -192,24 +229,45 @@ function SidebarItem({
   open: boolean;
 }) {
   const className = cn(
-    "relative flex h-11 w-full items-center rounded-md transition-all duration-200",
+    "group relative flex h-11 w-full items-center rounded-md transition-colors duration-150",
     isSelected
-      ? "bg-accent/10 text-accent shadow-sm border-l-2 border-accent"
+      ? "bg-accent/10 text-accent font-semibold"
       : "text-muted-foreground hover:bg-muted hover:text-foreground"
   );
 
   const inner = (
     <>
+      {/* Left indicator bar — sits inside the rounded background */}
+      {isSelected && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-accent"
+        />
+      )}
       <div className="grid h-full w-12 place-content-center shrink-0">
         <Icon className="h-4 w-4" />
       </div>
-      {open && <span className="text-sm font-medium truncate">{title}</span>}
+      {open && (
+        <span
+          className={cn(
+            "text-sm truncate",
+            isSelected ? "font-semibold" : "font-medium"
+          )}
+        >
+          {title}
+        </span>
+      )}
     </>
   );
 
   if (href) {
     return (
-      <Link href={href} className={className} onClick={onClick}>
+      <Link
+        href={href}
+        className={className}
+        onClick={onClick}
+        aria-current={isSelected ? "page" : undefined}
+      >
         {inner}
       </Link>
     );
