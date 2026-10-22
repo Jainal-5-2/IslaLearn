@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   BookOpen,
@@ -18,40 +17,29 @@ import {
   getMe,
   getTopics,
   getRequests,
-  isLoggedIn,
-  logout,
   User,
   Topic,
   TutoringRequest,
 } from "@/lib/api";
-import { AppShell } from "@/components/app-shell";
 import { StatCard } from "@/components/stat-card";
 import { QuickAction } from "@/components/quick-action";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
-  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [myRequests, setMyRequests] = useState<TutoringRequest[]>([]);
   const [appliedRequests, setAppliedRequests] = useState<TutoringRequest[]>([]);
   const [error, setError] = useState("");
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isLoggedIn()) {
-      router.replace("/login");
-      return;
-    }
-
     Promise.all([
       getMe(),
       getTopics(),
       getRequests({ mine: true, status: "open" }),
-      // Browse endpoint excludes your own requests by default, so this
-      // returns requests posted by others that you may have applied to.
-      // We then filter down to those with a my_application_status.
       getRequests({ status: "open" }),
     ])
       .then(([userData, topicsData, mineData, browseData]) => {
@@ -67,27 +55,18 @@ export default function DashboardPage() {
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Failed to load")
       )
-      .finally(() => setIsCheckingAuth(false));
-  }, [router]);
+      .finally(() => setLoading(false));
+  }, []);
 
-  function handleLogout() {
-    logout();
-    router.replace("/login");
+  if (loading) {
+    return <PageSkeleton variant="list" />;
   }
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="max-w-md w-full bg-card border border-border rounded-xl p-6 text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-accent underline"
-          >
-            Back to login
-          </button>
-        </div>
-      </main>
+      <div className="max-w-md w-full mx-auto bg-card border border-border rounded-xl p-6 text-center mt-20">
+        <p className="text-red-600 mb-4">{error}</p>
+      </div>
     );
   }
 
@@ -97,7 +76,7 @@ export default function DashboardPage() {
   const draftCount = topics.filter((t) => !t.is_published).length;
 
   return (
-    <AppShell user={user} onLogout={handleLogout}>
+    <>
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -301,11 +280,11 @@ export default function DashboardPage() {
                       className={cn(
                         "text-xs px-2 py-1 rounded-md font-medium shrink-0 ml-2 capitalize",
                         r.my_application_status === "accepted" &&
-                          "bg-green-500/10 text-green-600",
+                        "bg-green-500/10 text-green-600",
                         r.my_application_status === "rejected" &&
-                          "bg-red-500/10 text-red-600",
+                        "bg-red-500/10 text-red-600",
                         r.my_application_status === "pending" &&
-                          "bg-muted text-muted-foreground"
+                        "bg-muted text-muted-foreground"
                       )}
                     >
                       {r.my_application_status}
@@ -353,6 +332,6 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

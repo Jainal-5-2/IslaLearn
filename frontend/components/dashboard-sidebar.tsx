@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -30,9 +31,39 @@ type NavItem = {
   Icon: React.ComponentType<{ className?: string }>;
   title: string;
   href: string;
-  /** Extra predicate to claim the route exclusively over siblings. */
   owns?: (pathname: string) => boolean;
 };
+
+const NAV_ITEMS: NavItem[] = [
+  { Icon: Home, title: "Dashboard", href: "/dashboard" },
+  {
+    Icon: Plus,
+    title: "Create Topic",
+    href: "/topics/new",
+    owns: (p) => p === "/topics/new",
+  },
+  {
+    Icon: BookOpen,
+    title: "Browse Topics",
+    href: "/topics",
+    owns: (p) =>
+      p === "/topics" ||
+      (/^\/topics\/\d+/.test(p) && !p.endsWith("/edit") && p !== "/topics/new"),
+  },
+  {
+    Icon: Plus,
+    title: "Post Request",
+    href: "/requests/new",
+    owns: (p) => p === "/requests/new",
+  },
+  {
+    Icon: MessageSquare,
+    title: "Requests",
+    href: "/requests",
+    owns: (p) => p === "/requests" || /^\/requests\/\d+/.test(p),
+  },
+  { Icon: Video, title: "Broadcasts", href: "/broadcasts" },
+];
 
 export function DashboardSidebar({
   user,
@@ -42,58 +73,6 @@ export function DashboardSidebar({
   onMobileClose,
   onLogout,
 }: DashboardSidebarProps) {
-  const pathname = usePathname();
-
-  // Order matters: more specific routes first so they claim the path
-  // before a broader sibling (e.g. /topics/new before /topics).
-  const navItems: NavItem[] = [
-    { Icon: Home, title: "Dashboard", href: "/dashboard" },
-    {
-      Icon: Plus,
-      title: "Create Topic",
-      href: "/topics/new",
-      owns: (p) => p === "/topics/new",
-    },
-    {
-      Icon: BookOpen,
-      title: "Browse Topics",
-      href: "/topics",
-      owns: (p) =>
-        p === "/topics" ||
-        (/^\/topics\/\d+/.test(p) && !p.endsWith("/edit") && p !== "/topics/new"),
-    },
-    {
-      Icon: Plus,
-      title: "Post Request",
-      href: "/requests/new",
-      owns: (p) => p === "/requests/new",
-    },
-    {
-      Icon: MessageSquare,
-      title: "Requests",
-      href: "/requests",
-      owns: (p) =>
-        p === "/requests" || /^\/requests\/\d+/.test(p),
-    },
-    { Icon: Video, title: "Broadcasts", href: "/broadcasts" },
-  ];
-
-  /**
-   * Only the item whose `owns` predicate matches (or the only item whose
-   * href equals the pathname) is active. This prevents sibling items like
-   * "Browse Topics" and "Create Topic" from both lighting up on /topics/new.
-   */
-  const activeHref = (() => {
-    for (const item of navItems) {
-      if (item.owns) {
-        if (item.owns(pathname)) return item.href;
-      } else if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
-        return item.href;
-      }
-    }
-    return null;
-  })();
-
   return (
     <>
       {/* Mobile backdrop */}
@@ -142,24 +121,21 @@ export function DashboardSidebar({
 
         {/* Scrollable middle section */}
         <div className="flex-1 overflow-y-auto px-2 py-4">
-          {/* Nav Items */}
-          <div className="space-y-1 mb-6">
-            {navItems.map((item) => (
-              <SidebarItem
-                key={item.href}
-                Icon={item.Icon}
-                title={item.title}
-                href={item.href}
-                isSelected={activeHref === item.href}
-                onClick={onMobileClose}
-                open={open || isMobileOpen}
-              />
-            ))}
-          </div>
+          {/* Nav Items — active state streams in via Suspense */}
+          <Suspense
+            fallback={
+              <ActiveNavItemsFallback open={open || isMobileOpen} />
+            }
+          >
+            <ActiveNavItems
+              open={open || isMobileOpen}
+              onItemClick={onMobileClose}
+            />
+          </Suspense>
 
           {/* Account Section */}
           {(open || isMobileOpen) && (
-            <div className="border-t border-border pt-4 space-y-1">
+            <div className="border-t border-border pt-4 mt-6 space-y-1">
               <div className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Account
               </div>
@@ -213,6 +189,73 @@ export function DashboardSidebar({
   );
 }
 
+/**
+ * Renders the nav items with active-state highlight. This is the ONLY
+ * component in the sidebar tree that reads `usePathname()`, so it's the
+ * only one that suspends during prerendering.
+ */
+function ActiveNavItems({
+  open,
+  onItemClick,
+}: {
+  open: boolean;
+  onItemClick: () => void;
+}) {
+  const pathname = usePathname();
+
+  const activeHref = (() => {
+    for (const item of NAV_ITEMS) {
+      if (item.owns) {
+        if (item.owns(pathname)) return item.href;
+      } else if (
+        pathname === item.href ||
+        pathname.startsWith(`${item.href}/`)
+      ) {
+        return item.href;
+      }
+    }
+    return null;
+  })();
+
+  return (
+    <div className="space-y-1">
+      {NAV_ITEMS.map((item) => (
+        <SidebarItem
+          key={item.href}
+          Icon={item.Icon}
+          title={item.title}
+          href={item.href}
+          isSelected={activeHref === item.href}
+          onClick={onItemClick}
+          open={open}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Fallback rendered while `usePathname()` is resolving during prerender
+ * and hydration. Identical layout, no active highlight.
+ */
+function ActiveNavItemsFallback({ open }: { open: boolean }) {
+  return (
+    <div className="space-y-1">
+      {NAV_ITEMS.map((item) => (
+        <SidebarItem
+          key={item.href}
+          Icon={item.Icon}
+          title={item.title}
+          href={item.href}
+          isSelected={false}
+          onClick={() => {}}
+          open={open}
+        />
+      ))}
+    </div>
+  );
+}
+
 function SidebarItem({
   Icon,
   title,
@@ -237,7 +280,6 @@ function SidebarItem({
 
   const inner = (
     <>
-      {/* Left indicator bar — sits inside the rounded background */}
       {isSelected && (
         <span
           aria-hidden

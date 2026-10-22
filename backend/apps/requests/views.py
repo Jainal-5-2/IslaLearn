@@ -1,0 +1,231 @@
+from django.db import transaction
+from rest_framework import generics, permissions, status
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import Application, Request
+from .serializers import (
+    ApplicationCreateSerializer,
+    ApplicationSerializer,
+    RequestCreateSerializer,
+    RequestDetailSerializer,
+    RequestListSerializer,
+    RequestUpdateSerializer,
+)
+
+
+class RequestListCreateView(generics.ListCreateAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Request.objects.select_related(
+            "tutee", "subject"
+        ).prefetch_related("applications")
+
+        status_filter = self.request.query_params.get("status", "open")
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        subject_id = self.request.query_params.get("subject")
+        if subject_id:
+            queryset = queryset.filter(subject_id=subject_id)
+
+        if self.request.query_params.get("mine") == "true":
+            queryset = queryset.filter(tutee=self.request.user)
+        elif self.request.method == "GET" and status_filter == "open":
+            queryset = queryset.exclude(tutee=self.request.user)
+
+        return queryset
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return RequestCreateSerializer
+        return RequestListSerializer
+
+    def create(self, request, *args, **kwargs):
+        write_serializer = self.get_serializer(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        req = write_serializer.save(tutee=request.user)
+
+        read_serializer = RequestDetailSerializer(
+            req, context=self.get_serializer_context()
+        )
+        headers = self.get_success_headers(read_serializer.data)
+        return Response(
+            read_serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
+
+class RequestDetailView(generics.RetrieveUpdateAPIView):
+    queryset = Request.objects.select_related(
+        "tutee", "subject"
+    ).prefetch_related("applications__tutor")
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "patch", "head", "options"]
+
+    def get_serializer_class(self):
+        if self.request.method == "PATCH":
+            return RequestUpdateSerializer
+        return RequestDetailSerializer
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        if request.method == "PATCH":
+            if obj.tutee != request.user:
+                raise PermissionDenied(
+                    "Only the request owner can edit this request."
+                )
+            if obj.status != "open":
+                raise ValidationError(
+                    "This request is closed and can no longer be edited."
+                )
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+
+        new_subject_id = request.data.get("subject")
+        if new_subject_id is not None:
+            try:
+                new_subject_id = int(new_subject_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"subject": "Invalid subject id."})
+
+            if (
+                new_subject_id != instance.subject_id
+                and instance.applications.exists()
+            ):
+                raise ValidationError(
+                    {
+                        "subject": (
+                            "Subject can no longer be changed — tutors have "
+                            "already applied. Close and repost to change it."
+                        )
+                    }
+                )
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, "_prefetched_objects_cache", None):
+            instance._prefetched_objects_cache = {}
+
+        read_serializer = RequestDetailSerializer(
+            instance, context=self.get_serializer_context()
+        )
+        return Response(read_serializer.data)
+
+
+class RequestCloseView(APIView):
+    """
+    POST /api/requests/{id}/close/
+
+    Owner-only. Transitions an open request to closed.
+    Any pending applications are marked rejected so no tutor is left
+    hanging on a request that can no longer accept an accepted applicant.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            req = Request.objects.get(pk=pk)
+        except Request.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound("Request not found.")
+
+        if req.tutee != request.user:
+            raise PermissionDenied("Only the request owner can close it.")
+        if req.status != "open":
+            raise ValidationError("This request is already closed.")
+        if req.applications.filter(status="accepted").exists():
+            # Defensive: shouldn't happen since accepting already closes the
+            # request, but guard against manual state drift.
+            raise ValidationError(
+                "This request already has an accepted tutor and is closed."
+            )
+
+        with transaction.atomic():
+            req.status = "closed"
+            req.save(update_fields=["status"])
+            req.applications.filter(status="pending").update(status="rejected")
+
+        # Return the full detail shape so the client can re-sync in one call.
+        serializer = RequestDetailSerializer(
+            req, context={"request": request}
+        )
+        return Response(serializer.data)
+
+
+class RequestApplyView(generics.CreateAPIView):
+    serializer_class = ApplicationCreateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        request_obj = self.get_request()
+
+        if request_obj.tutee == self.request.user:
+            raise ValidationError("You cannot apply to your own request.")
+        if request_obj.status != "open":
+            raise ValidationError("This request is no longer open.")
+        if Application.objects.filter(
+            request=request_obj, tutor=self.request.user
+        ).exists():
+            raise ValidationError("You have already applied to this request.")
+
+        serializer.save(request=request_obj, tutor=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(
+            ApplicationSerializer(serializer.instance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def get_request(self):
+        try:
+            return Request.objects.get(id=self.kwargs["pk"])
+        except Request.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound("Request not found.")
+
+
+class ApplicationDecisionView(generics.UpdateAPIView):
+    queryset = Application.objects.select_related("request", "tutor")
+    serializer_class = ApplicationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["patch"]
+
+    def update(self, request, *args, **kwargs):
+        application = self.get_object()
+        req = application.request
+
+        if req.tutee != request.user:
+            raise PermissionDenied("Only the request owner can decide.")
+
+        new_status = request.data.get("status")
+        if new_status not in ("accepted", "rejected"):
+            raise ValidationError(
+                {"status": "Must be 'accepted' or 'rejected'."}
+            )
+        if application.status != "pending":
+            raise ValidationError("This application has already been decided.")
+
+        with transaction.atomic():
+            application.status = new_status
+            application.save(update_fields=["status"])
+
+            if new_status == "accepted":
+                Application.objects.filter(
+                    request=req, status="pending"
+                ).exclude(pk=application.pk).update(status="rejected")
+                req.status = "closed"
+                req.save(update_fields=["status"])
+
+        return Response(ApplicationSerializer(application).data)

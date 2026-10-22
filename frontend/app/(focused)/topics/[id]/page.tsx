@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -17,7 +17,6 @@ import {
 import {
   getTopic,
   getMe,
-  isLoggedIn,
   Topic,
   TopicPage,
   User,
@@ -25,12 +24,19 @@ import {
 } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Footer } from "@/components/footer";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { cn } from "@/lib/utils";
+
+export default function Page() {
+  return (
+    <Suspense fallback={<PageSkeleton variant="reader" />}>
+      <TopicReaderPage />
+    </Suspense>
+  );
+}
 
 function TopicReaderPage() {
   const params = useParams();
-  const router = useRouter();
   const topicId = Number(params.id);
 
   const [topic, setTopic] = useState<Topic | null>(null);
@@ -41,11 +47,6 @@ function TopicReaderPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!isLoggedIn()) {
-      router.replace("/login");
-      return;
-    }
-
     async function loadData() {
       try {
         setLoading(true);
@@ -67,11 +68,15 @@ function TopicReaderPage() {
     }
 
     loadData();
-  }, [topicId, router]);
+  }, [topicId]);
 
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [activePageIndex]);
+
+  if (loading) {
+    return <PageSkeleton variant="reader" />;
+  }
 
   if (error || !topic) {
     return (
@@ -131,13 +136,7 @@ function TopicReaderPage() {
         </div>
       </div>
 
-      {/* 
-        Middle Row:
-        flex-1 makes it stretch to fill the available space above the footer.
-        lg:flex-row puts the sidebar and content side-by-side on desktop.
-      */}
       <div className="flex flex-1 lg:flex-row min-h-0">
-        {/* Mobile backdrop */}
         {isSidebarOpen && (
           <div
             className="lg:hidden fixed inset-0 bg-black/40 z-40"
@@ -146,10 +145,6 @@ function TopicReaderPage() {
           />
         )}
 
-        {/* Sidebar: 
-            sticky top-0 on desktop so it stays in view when scrolling.
-            h-screen makes it viewport height.
-        */}
         <aside
           className={cn(
             "bg-card border-border flex flex-col",
@@ -248,7 +243,6 @@ function TopicReaderPage() {
           )}
         </aside>
 
-        {/* Main content */}
         <section className="flex-1 min-w-0 px-6 lg:px-12 pt-6 lg:pt-12 pb-12">
           <div className="max-w-3xl mx-auto w-full min-w-0">
             {!activePage ? (
@@ -322,9 +316,6 @@ function TopicReaderPage() {
           </div>
         </section>
       </div>
-
-      {/* Footer */}
-      <Footer isLoggedIn />
     </div>
   );
 }

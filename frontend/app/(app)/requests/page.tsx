@@ -1,23 +1,18 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
 import {
-  getMe,
   getSubjects,
   getRequests,
-  isLoggedIn,
-  logout,
   Subject,
   TutoringRequest,
-  User,
 } from "@/lib/api";
-import { AppShell } from "@/components/app-shell";
 import { SubjectCombobox } from "@/components/subject-combobox";
 import { RequestCard } from "@/components/request-card";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { cn } from "@/lib/utils";
 
 const containerVariants = {
@@ -29,33 +24,31 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
 };
 
+export default function Page() {
+  return (
+    <Suspense fallback={<PageSkeleton variant="list" />}>
+      <RequestsPage />
+    </Suspense>
+  );
+}
+
 function RequestsPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [requests, setRequests] = useState<TutoringRequest[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
   const [tab, setTab] = useState<"browse" | "mine">("browse");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
-    if (!isLoggedIn()) {
-      router.replace("/login");
-      return;
-    }
-    Promise.all([getMe(), getSubjects()])
-      .then(([u, s]) => {
-        setUser(u);
-        setSubjects(s);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setIsCheckingAuth(false));
-  }, [router]);
+    getSubjects()
+      .then(setSubjects)
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Failed to load subjects")
+      );
+  }, []);
 
   useEffect(() => {
-    if (!isLoggedIn()) return;
     let cancelled = false;
     setLoading(true);
     getRequests({
@@ -76,15 +69,8 @@ function RequestsPage() {
     };
   }, [selectedSubject, tab]);
 
-  function handleLogout() {
-    logout();
-    router.replace("/login");
-  }
-
-  if (!user) return null;
-
   return (
-    <AppShell user={user} onLogout={handleLogout}>
+    <>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
@@ -139,11 +125,7 @@ function RequestsPage() {
       )}
 
       {loading ? (
-        <div className="space-y-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
-          ))}
-        </div>
+        <PageSkeleton variant="list" />
       ) : requests.length === 0 ? (
         <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
           <h3 className="text-lg font-semibold mb-2">
@@ -179,6 +161,6 @@ function RequestsPage() {
           ))}
         </motion.div>
       )}
-    </AppShell>
+    </>
   );
 }

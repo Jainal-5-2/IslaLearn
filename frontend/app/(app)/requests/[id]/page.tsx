@@ -11,17 +11,24 @@ import {
   updateRequest,
   closeRequest,
   decideApplication,
-  isLoggedIn,
   TutoringRequest,
   Subject,
   User,
   ApiError,
 } from "@/lib/api";
-import { AppShell } from "@/components/app-shell";
 import { RequestCard } from "@/components/request-card";
 import { SubjectCombobox } from "@/components/subject-combobox";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { showToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
+
+export default function Page() {
+  return (
+    <Suspense fallback={<PageSkeleton variant="list" />}>
+      <RequestDetailPage />
+    </Suspense>
+  );
+}
 
 function RequestDetailPage() {
   const params = useParams();
@@ -46,10 +53,6 @@ function RequestDetailPage() {
   const [draftTimeOfDay, setDraftTimeOfDay] = useState("");
 
   useEffect(() => {
-    if (!isLoggedIn()) {
-      router.replace("/login");
-      return;
-    }
     Promise.all([getRequest(requestId), getMe(), getSubjects()])
       .then(([r, u, s]) => {
         setReq(r);
@@ -66,6 +69,9 @@ function RequestDetailPage() {
 
   function enterEdit() {
     if (!req) return;
+    if (req.tutee.id !== user?.id) return;
+    if (req.status !== "open") return;
+
     setEditError("");
     setDraftSubjectId(req.subject.id);
     setDraftDescription(req.description);
@@ -92,6 +98,15 @@ function RequestDetailPage() {
 
   async function saveEdit() {
     if (!req) return;
+    if (req.tutee.id !== user?.id) {
+      setEditError("You don't have permission to edit this request.");
+      return;
+    }
+    if (req.status !== "open") {
+      setEditError("This request is closed and can no longer be edited.");
+      return;
+    }
+
     if (!!draftDate !== !!draftTimeOfDay) {
       setEditError(
         "Please provide both a date and a time for your preferred slot, or leave both blank."
@@ -141,6 +156,10 @@ function RequestDetailPage() {
 
   async function handleClose() {
     if (!req) return;
+    if (req.tutee.id !== user?.id) {
+      showToast("You don't have permission to close this request.");
+      return;
+    }
     if (
       !confirm(
         "Close this request? Pending applications will be rejected and no new tutors can apply."
@@ -175,20 +194,18 @@ function RequestDetailPage() {
     }
   }
 
-  function handleLogout() {
-    router.replace("/login");
+  if (loading) {
+    return <PageSkeleton variant="list" />;
   }
 
   if (error || !req || !user) {
     return (
-      <AppShell user={user!} onLogout={handleLogout}>
-        <div className="text-center py-20">
-          <p className="text-red-600 mb-4">{error || "Request not found."}</p>
-          <Link href="/requests" className="text-accent underline">
-            Back to requests
-          </Link>
-        </div>
-      </AppShell>
+      <div className="text-center py-20">
+        <p className="text-red-600 mb-4">{error || "Request not found."}</p>
+        <Link href="/requests" className="text-accent underline">
+          Back to requests
+        </Link>
+      </div>
     );
   }
 
@@ -339,107 +356,106 @@ function RequestDetailPage() {
   ) : null;
 
   return (
-    <AppShell user={user} onLogout={handleLogout}>
-      <div className="max-w-3xl mx-auto space-y-6">
-        <Link
-          href="/requests"
-          className="inline-block text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          &larr; Back to requests
-        </Link>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <Link
+        href="/requests"
+        className="inline-block text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        &larr; Back to requests
+      </Link>
 
-        <RequestCard
-          request={req}
-          showApplications={false}
-          action={headerActions}
-          footer={editFooter ?? undefined}
-        />
+      <RequestCard
+        request={req}
+        showApplications={false}
+        isOwner={isOwner}
+        action={headerActions}
+        footer={editFooter ?? undefined}
+      />
 
-        {!editing && req.preferred_time && (
-          <div className="bg-muted/50 border border-border rounded-xl p-4 text-sm">
-            <span className="text-muted-foreground">Preferred time: </span>
-            {new Date(req.preferred_time).toLocaleString()}
-          </div>
-        )}
-
-        {canApply && (
-          <Link
-            href={`/requests/${req.id}/apply`}
-            className="block w-full text-center h-11 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 leading-[2.75rem] transition-colors"
-          >
-            Apply to help
-          </Link>
-        )}
-        {!isOwner && myApplication && (
-          <div className="bg-card border border-border rounded-xl p-4 text-sm">
-            You applied on{" "}
-            {new Date(myApplication.created_at).toLocaleDateString()} — status:{" "}
-            <span className="font-medium capitalize">
-              {myApplication.status}
-            </span>
-          </div>
-        )}
-        {req.status === "closed" && !isOwner && !myApplication && (
-          <p className="text-sm text-muted-foreground">
-            This request is closed.
-          </p>
-        )}
-
-        <div className="bg-card border border-border rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">
-            Applications ({req.applications?.length ?? 0})
-          </h2>
-          {!req.applications || req.applications.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No applications yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {req.applications.map((a) => (
-                <div
-                  key={a.id}
-                  className="border border-border rounded-lg p-4 bg-background"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-sm">
-                      {a.tutor.username}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-xs px-2 py-1 rounded-md font-medium",
-                        a.status === "accepted" &&
-                          "bg-green-500/10 text-green-600",
-                        a.status === "rejected" && "bg-red-500/10 text-red-600",
-                        a.status === "pending" &&
-                          "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {a.status}
-                    </span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{a.message}</p>
-                  {isOwner && a.status === "pending" && req.status === "open" && (
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={() => handleDecision(a.id, "accepted")}
-                        disabled={deciding === a.id}
-                        className="h-9 px-3 rounded-md bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
-                      >
-                        {deciding === a.id ? "..." : "Accept"}
-                      </button>
-                      <button
-                        onClick={() => handleDecision(a.id, "rejected")}
-                        disabled={deciding === a.id}
-                        className="h-9 px-3 rounded-md border border-border text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+      {!editing && req.preferred_time && (
+        <div className="bg-muted/50 border border-border rounded-xl p-4 text-sm">
+          <span className="text-muted-foreground">Preferred time: </span>
+          {new Date(req.preferred_time).toLocaleString()}
         </div>
+      )}
+
+      {canApply && (
+        <Link
+          href={`/requests/${req.id}/apply`}
+          className="block w-full text-center h-11 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 leading-[2.75rem] transition-colors"
+        >
+          Apply to help
+        </Link>
+      )}
+      {!isOwner && myApplication && (
+        <div className="bg-card border border-border rounded-xl p-4 text-sm">
+          You applied on{" "}
+          {new Date(myApplication.created_at).toLocaleDateString()} — status:{" "}
+          <span className="font-medium capitalize">
+            {myApplication.status}
+          </span>
+        </div>
+      )}
+      {req.status === "closed" && !isOwner && !myApplication && (
+        <p className="text-sm text-muted-foreground">
+          This request is closed.
+        </p>
+      )}
+
+      <div className="bg-card border border-border rounded-xl p-6">
+        <h2 className="text-lg font-semibold mb-4">
+          Applications ({req.applications?.length ?? 0})
+        </h2>
+        {!req.applications || req.applications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No applications yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {req.applications.map((a) => (
+              <div
+                key={a.id}
+                className="border border-border rounded-lg p-4 bg-background"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-sm">
+                    {a.tutor.username}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-xs px-2 py-1 rounded-md font-medium",
+                      a.status === "accepted" &&
+                        "bg-green-500/10 text-green-600",
+                      a.status === "rejected" && "bg-red-500/10 text-red-600",
+                      a.status === "pending" &&
+                        "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {a.status}
+                  </span>
+                </div>
+                <p className="text-sm whitespace-pre-wrap">{a.message}</p>
+                {isOwner && a.status === "pending" && req.status === "open" && (
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => handleDecision(a.id, "accepted")}
+                      disabled={deciding === a.id}
+                      className="h-9 px-3 rounded-md bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors"
+                    >
+                      {deciding === a.id ? "..." : "Accept"}
+                    </button>
+                    <button
+                      onClick={() => handleDecision(a.id, "rejected")}
+                      disabled={deciding === a.id}
+                      className="h-9 px-3 rounded-md border border-border text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-    </AppShell>
+    </div>
   );
 }

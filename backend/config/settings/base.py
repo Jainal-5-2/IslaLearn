@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     # Local
     'apps.users',
     'apps.topics',
+    'apps.requests',
 ]
 
 MIDDLEWARE = [
