@@ -17,6 +17,14 @@ export type Subject = {
   description: string;
 };
 
+// ---------- Topic Progress ----------
+export type TopicProgress = {
+  last_page_index: number;
+  is_completed: boolean;
+  last_visited_at: string;
+  completed_at: string | null;
+};
+
 // ---------- Topics ----------
 export type TopicPage = {
   id: number;
@@ -36,6 +44,7 @@ export type Topic = {
   free_page_count: number;
   page_count: number;
   pages?: TopicPage[];
+  progress: TopicProgress | null;
   created_at: string;
 };
 

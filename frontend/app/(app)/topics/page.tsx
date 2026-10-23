@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus } from "lucide-react";
+import { Plus, PlayCircle, CheckCircle2 } from "lucide-react";
 import {
   getSubjects,
   getTopics,
@@ -130,35 +130,53 @@ export default function TopicsPage() {
           initial="hidden"
           animate="visible"
         >
-          {topics.map((topic) => (
-            <motion.div key={topic.id} variants={itemVariants}>
-              <Link
-                href={`/topics/${topic.id}`}
-                className="group flex flex-col h-full bg-card text-card-foreground border border-border rounded-xl p-5 hover:shadow-md hover:border-accent/40 transition-all"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
-                    {topic.subject.name}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {topic.page_count} pages
-                  </span>
-                </div>
-                <h2 className="text-lg font-bold mb-2 group-hover:text-accent transition-colors">
-                  {topic.title}
-                </h2>
-                <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
-                  {topic.description || "No description provided."}
-                </p>
-                <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                  <span>by {topic.created_by.username}</span>
-                  {!topic.is_published && (
-                    <span className="text-orange-500 font-medium">Draft</span>
-                  )}
-                </div>
-              </Link>
-            </motion.div>
-          ))}
+          {topics.map((topic) => {
+            const progress = topic.progress;
+            const isCompleted = !!progress?.is_completed;
+            const isInProgress = !!progress && !isCompleted;
+
+            return (
+              <motion.div key={topic.id} variants={itemVariants}>
+                <Link
+                  href={`/topics/${topic.id}`}
+                  className="group flex flex-col h-full bg-card text-card-foreground border border-border rounded-xl p-5 hover:shadow-md hover:border-accent/40 transition-all"
+                >
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
+                      {topic.subject.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {topic.page_count} pages
+                    </span>
+                    {isInProgress && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
+                        <PlayCircle className="h-3 w-3" />
+                        Continue
+                      </span>
+                    )}
+                    {isCompleted && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500/10 text-green-600 rounded-md">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Completed
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-lg font-bold mb-2 group-hover:text-accent transition-colors">
+                    {topic.title}
+                  </h2>
+                  <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
+                    {topic.description || "No description provided."}
+                  </p>
+                  <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                    <span>by {topic.created_by.username}</span>
+                    {!topic.is_published && (
+                      <span className="text-orange-500 font-medium">Draft</span>
+                    )}
+                  </div>
+                </Link>
+              </motion.div>
+            );
+          })}
         </motion.div>
       )}
     </>

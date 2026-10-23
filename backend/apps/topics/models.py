@@ -7,6 +7,7 @@ class Subject(models.Model):
     Curated taxonomy of Computer Science subjects.
     e.g., "Python", "Data Structures", "Web Development".
     """
+
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
 
@@ -22,17 +23,20 @@ class Topic(models.Model):
     An async learning resource created by a tutor.
     Container for ordered TopicPages.
     """
-    subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name="topics")
+
+    subject = models.ForeignKey(
+        Subject, on_delete=models.CASCADE, related_name="topics"
+    )
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE, 
-        related_name="created_topics"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="created_topics",
     )
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     is_published = models.BooleanField(default=False)
-    
-    # The first N pages are always free. 
+
+    # The first N pages are always free.
     # For MVP this is always open, but logic exists for future monetization.
     free_page_count = models.PositiveIntegerField(default=2)
 
@@ -51,6 +55,7 @@ class TopicPage(models.Model):
     An individual page within a Topic.
     Can be text, video, or a quiz.
     """
+
     PAGE_TYPES = [
         ("text", "Text"),
         ("video", "Video"),
@@ -60,7 +65,7 @@ class TopicPage(models.Model):
     topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name="pages")
     order = models.PositiveIntegerField(default=1)
     page_type = models.CharField(max_length=10, choices=PAGE_TYPES, default="text")
-    
+
     # JSONField stores:
     # - text: {"body": "..."}
     # - video: {"url": "..."}
@@ -74,3 +79,40 @@ class TopicPage(models.Model):
 
     def __str__(self):
         return f"{self.topic.title} - Page {self.order} ({self.page_type})"
+
+
+class TopicProgress(models.Model):
+    """
+    Tracks a user's progress through a Topic.
+
+    - last_page_index: monotonic high-water mark of the furthest page the
+      user has reached. Never decreases except via an explicit reset.
+    - is_completed: set once last_page_index reaches the last page.
+    - completed_at: timestamp of when is_completed flipped to True, for
+      display. Null while not completed.
+    - One row per (user, topic). Upserted by the progress endpoint.
+    - Topics created by the user do not get progress rows.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="topic_progress",
+    )
+    topic = models.ForeignKey(
+        Topic,
+        on_delete=models.CASCADE,
+        related_name="progress_entries",
+    )
+    last_page_index = models.PositiveIntegerField(default=0)
+    is_completed = models.BooleanField(default=False)
+    last_visited_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("user", "topic")
+        ordering = ["-last_visited_at"]
+        verbose_name_plural = "topic progress"
+
+    def __str__(self):
+        return f"{self.user.username} on {self.topic.title} (page {self.last_page_index + 1})"

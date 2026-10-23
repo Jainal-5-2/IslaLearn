@@ -22,6 +22,7 @@ export type {
   Subject,
   Topic,
   TopicPage,
+  TopicProgress,
   LoginResponse,
   RequestStatus,
   ApplicationStatus,
@@ -42,6 +43,7 @@ export {
   createTopic,
   updateTopic,
   deleteTopic,
+  recordProgress,
 } from "./topics";
 
 // Pages

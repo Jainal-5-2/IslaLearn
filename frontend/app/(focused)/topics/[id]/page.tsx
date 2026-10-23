@@ -1,24 +1,25 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
 import {
-  Menu,
-  X,
+  ArrowLeft,
+  BookOpen,
   Lock,
   FileText,
   Video as VideoIcon,
   ClipboardList,
-  ChevronLeft,
-  ChevronRight,
+  Clock,
+  CheckCircle2,
+  PlayCircle,
+  Pencil,
 } from "lucide-react";
 import {
   getTopic,
   getMe,
+  recordProgress,
   Topic,
-  TopicPage,
   User,
   ApiError,
 } from "@/lib/api";
@@ -30,57 +31,81 @@ import { cn } from "@/lib/utils";
 export default function Page() {
   return (
     <Suspense fallback={<PageSkeleton variant="reader" />}>
-      <TopicReaderPage />
+      <TopicDetailPage />
     </Suspense>
   );
 }
 
-function TopicReaderPage() {
+function TopicDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const topicId = Number(params.id);
 
   const [topic, setTopic] = useState<Topic | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activePageIndex, setActivePageIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     async function loadData() {
       try {
-        setLoading(true);
         const [topicData, userData] = await Promise.all([
           getTopic(topicId),
           getMe(),
         ]);
+        if (cancelled) return;
+
         setTopic(topicData);
         setCurrentUser(userData);
       } catch (err) {
+        if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
           setError("Topic not found.");
         } else {
           setError(err instanceof Error ? err.message : "Failed to load topic");
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [topicId]);
 
-  useEffect(() => {
-    setIsSidebarOpen(false);
-  }, [activePageIndex]);
+  async function handleStartReading() {
+    if (!topic) return;
+    setStartError("");
+    setStarting(true);
+    try {
+      // Only write the initial progress row for first-time readers.
+      // Returning readers already have progress; overwriting it with 0
+      // would break the reader's resume-to-last-page behavior.
+      if (!topic.progress) {
+        await recordProgress(topic.id, 0);
+      }
+      router.push(`/topics/${topic.id}/read`);
+    } catch (err) {
+      setStartError(
+        err instanceof Error ? err.message : "Failed to start reading."
+      );
+      setStarting(false);
+    }
+  }
 
   if (loading) {
     return <PageSkeleton variant="reader" />;
   }
 
-  if (error || !topic) {
+  if (error || !topic || !currentUser) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
+      <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-4">
         <p className="text-red-600">{error || "Topic not found."}</p>
         <Link href="/topics" className="text-accent underline">
           Back to topics
@@ -89,414 +114,217 @@ function TopicReaderPage() {
     );
   }
 
-  const isOwner = currentUser?.id === topic.created_by.id;
+  const isOwner = currentUser.id === topic.created_by.id;
   const pages = topic.pages || [];
-  const activePage = pages[activePageIndex];
+  const pageCount = pages.length;
+  const freeCount = Math.min(topic.free_page_count, pageCount);
+  const lockedCount = Math.max(0, pageCount - freeCount);
+  const firstPage = pages[0];
 
-  const handleNext = () => {
-    if (activePageIndex < pages.length - 1) {
-      setActivePageIndex(activePageIndex + 1);
-    }
-  };
+  const previewBody: string | null =
+    firstPage && firstPage.page_type === "text" && firstPage.content?.body
+      ? String(firstPage.content.body)
+      : null;
 
-  const handlePrev = () => {
-    if (activePageIndex > 0) {
-      setActivePageIndex(activePageIndex - 1);
-    }
-  };
+  const previewType = firstPage?.page_type ?? null;
 
-  const handleSelectPage = (index: number) => {
-    setActivePageIndex(index);
-    setIsSidebarOpen(false);
-  };
+  const readButtonLabel = (() => {
+    if (pageCount === 0) return "No pages yet";
+    if (starting) return "Starting...";
+    if (topic.progress?.is_completed) return "Read again";
+    if (topic.progress) return "Continue reading";
+    return "Start reading";
+  })();
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      {/* Mobile header */}
-      <div className="lg:hidden sticky top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-        <button
-          onClick={() => setIsSidebarOpen(true)}
-          className="inline-flex items-center gap-2 text-sm font-medium hover:text-accent transition-colors"
-          aria-label="Open contents"
-        >
-          <Menu className="h-5 w-5" />
-          Contents
-        </button>
-        <span className="text-sm text-muted-foreground truncate max-w-[40%]">
-          {activePageIndex + 1} / {pages.length}
-        </span>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <Link
-            href="/topics"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Exit
-          </Link>
-        </div>
-      </div>
-
-      <div className="flex flex-1 lg:flex-row min-h-0">
-        {isSidebarOpen && (
-          <div
-            className="lg:hidden fixed inset-0 bg-black/40 z-40"
-            onClick={() => setIsSidebarOpen(false)}
-            aria-hidden="true"
-          />
-        )}
-
-        <aside
-          className={cn(
-            "bg-card border-border flex flex-col",
-            "fixed lg:sticky inset-y-0 lg:inset-y-auto left-0 z-50 lg:z-auto w-80 max-w-[85vw] sm:max-w-sm transition-transform duration-300",
-            isSidebarOpen
-              ? "translate-x-0"
-              : "-translate-x-full lg:translate-x-0",
-            "lg:w-80 lg:border-r lg:top-0 lg:h-screen lg:shrink-0"
-          )}
-        >
-          <div className="p-6 border-b border-border flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-4">
-                <Logo href="/dashboard" size={32} showText={false} />
-                <Link
-                  href="/topics"
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  &larr; All Topics
-                </Link>
-              </div>
-              <h1 className="text-xl font-bold leading-tight mb-1 truncate">
-                {topic.title}
-              </h1>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="bg-muted px-2 py-0.5 rounded truncate">
-                  {topic.subject.name}
-                </span>
-                <span className="truncate">by {topic.created_by.username}</span>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsSidebarOpen(false)}
-              className="lg:hidden text-muted-foreground hover:text-foreground transition-colors shrink-0"
-              aria-label="Close contents"
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Top bar */}
+      <header className="sticky top-0 z-30 bg-card border-b border-border">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link
+              href="/topics"
+              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0"
             >
-              <X className="h-5 w-5" />
-            </button>
+              <ArrowLeft className="h-4 w-4" />
+              Topics
+            </Link>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-4">
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-2">
-              Pages
-            </h2>
-            <nav className="space-y-1">
-              {pages.map((page, index) => (
-                <button
-                  key={page.id}
-                  onClick={() => handleSelectPage(index)}
-                  className={cn(
-                    "w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between transition-colors",
-                    index === activePageIndex
-                      ? "bg-accent/10 text-accent font-medium"
-                      : "text-foreground hover:bg-muted"
-                  )}
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <span className="text-xs text-muted-foreground w-4">
-                      {index + 1}.
-                    </span>
-                    <span className="flex items-center gap-2 truncate">
-                      {page.page_type === "text" && (
-                        <FileText className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      {page.page_type === "video" && (
-                        <VideoIcon className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      {page.page_type === "quiz" && (
-                        <ClipboardList className="h-3.5 w-3.5 shrink-0" />
-                      )}
-                      <span className="truncate capitalize">
-                        {page.page_type}
-                      </span>
-                    </span>
-                  </span>
-                  {page.is_locked && (
-                    <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  )}
-                </button>
-              ))}
-            </nav>
+          <div className="flex items-center gap-2 shrink-0">
+            <ThemeToggle />
+            <Logo href="/dashboard" size={28} showText={false} />
           </div>
+        </div>
+      </header>
 
-          {isOwner && (
-            <div className="p-4 border-t border-border bg-muted/30">
-              <p className="text-xs text-muted-foreground mb-2">
-                You are the creator.
-              </p>
-              <Link
-                href={`/topics/${topic.id}/edit`}
-                className="block w-full text-center text-sm bg-background border border-border hover:bg-muted px-3 py-2 rounded-md font-medium transition-colors"
-              >
-                Edit Topic & Pages
-              </Link>
-            </div>
-          )}
-        </aside>
-
-        <section className="flex-1 min-w-0 px-6 lg:px-12 pt-6 lg:pt-12 pb-12">
-          <div className="max-w-3xl mx-auto w-full min-w-0">
-            {!activePage ? (
-              <div className="text-center py-20">
-                <h2 className="text-2xl font-bold mb-2">This topic is empty</h2>
-                <p className="text-muted-foreground mb-6">
-                  {isOwner
-                    ? "Add your first page to get started."
-                    : "The creator hasn't added any pages yet."}
-                </p>
-                {isOwner && (
-                  <Link
-                    href={`/topics/${topic.id}/edit`}
-                    className="inline-block bg-accent text-accent-foreground px-4 py-2 rounded-md font-medium hover:bg-accent/90"
-                  >
-                    + Add Page
-                  </Link>
-                )}
-              </div>
-            ) : activePage.is_locked ? (
-              <LockGate page={activePage} />
-            ) : (
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activePage.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="min-w-0"
-                >
-                  <div className="mb-6 hidden lg:block">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Page {activePageIndex + 1} of {pages.length}
-                    </span>
-                  </div>
-
-                  <div className="min-w-0">
-                    {activePage.page_type === "text" && (
-                      <TextPageRenderer content={activePage.content} />
-                    )}
-                    {activePage.page_type === "video" && (
-                      <VideoPageRenderer content={activePage.content} />
-                    )}
-                    {activePage.page_type === "quiz" && (
-                      <QuizPageRenderer content={activePage.content} />
-                    )}
-                  </div>
-
-                  <div className="flex justify-between items-center mt-12 pt-6 border-t border-border">
-                    <button
-                      onClick={handlePrev}
-                      disabled={activePageIndex === 0}
-                      className="inline-flex items-center gap-1 h-10 px-4 rounded-md border border-border hover:bg-muted font-medium disabled:opacity-50 disabled:pointer-events-none transition-colors"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                      Previous
-                    </button>
-                    <button
-                      onClick={handleNext}
-                      disabled={activePageIndex === pages.length - 1}
-                      className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-accent text-accent-foreground hover:bg-accent/90 font-medium disabled:opacity-50 disabled:pointer-events-none transition-colors"
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
+      <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        {/* Title block */}
+        <div className="mb-8">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
+              {topic.subject.name}
+            </span>
+            {!topic.is_published && (
+              <span className="text-xs font-medium px-2 py-1 bg-orange-500/10 text-orange-600 rounded-md">
+                Draft
+              </span>
             )}
           </div>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-// ---------- Renderers ----------
-
-function LockGate({ page }: { page: TopicPage }) {
-  return (
-    <div className="flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center shadow-sm">
-        <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-6">
-          <Lock className="h-7 w-7 text-muted-foreground" />
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-3 break-words">
+            {topic.title}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            by{" "}
+            <span className="text-foreground">{topic.created_by.username}</span>
+            {" · "}
+            {pageCount} {pageCount === 1 ? "page" : "pages"}
+          </p>
         </div>
-        <h2 className="text-2xl font-bold mb-2">Continue learning</h2>
-        <p className="text-muted-foreground mb-6">
-          This page is locked. In the future, you&apos;ll be able to unlock it
-          by purchasing the topic. For now, everything is free during the MVP
-          phase.
-        </p>
-        <button
-          disabled
-          className="w-full h-10 rounded-md bg-accent text-accent-foreground font-medium opacity-50 cursor-not-allowed"
-        >
-          Unlock (Coming Soon)
-        </button>
-      </div>
-    </div>
-  );
-}
 
-function TextPageRenderer({ content }: { content: any }) {
-  return (
-    <div className="prose prose-neutral dark:prose-invert max-w-none min-w-0">
-      {content?.body ? (
-        <div className="whitespace-pre-wrap break-words text-lg leading-relaxed text-foreground">
-          {content.body}
+        {/* Metadata cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+          <MetaCard
+            icon={<BookOpen className="h-4 w-4" />}
+            label="Total pages"
+            value={String(pageCount)}
+          />
+          <MetaCard
+            icon={<Clock className="h-4 w-4" />}
+            label="Free pages"
+            value={String(freeCount)}
+            accent
+          />
+          <MetaCard
+            icon={<Lock className="h-4 w-4" />}
+            label="Locked pages"
+            value={String(lockedCount)}
+          />
         </div>
-      ) : (
-        <p className="text-muted-foreground italic">No text content.</p>
-      )}
-    </div>
-  );
-}
 
-function VideoPageRenderer({ content }: { content: any }) {
-  const url = content?.url || "";
+        {/* Description */}
+        {topic.description && (
+          <section className="mb-8">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              About this topic
+            </h2>
+            <p className="text-base leading-relaxed whitespace-pre-wrap text-foreground">
+              {topic.description}
+            </p>
+          </section>
+        )}
 
-  let embedUrl = url;
-  if (url.includes("youtube.com/watch?v=")) {
-    embedUrl = url.replace("watch?v=", "embed/");
-  } else if (url.includes("youtu.be/")) {
-    embedUrl = url.replace("youtu.be/", "www.youtube.com/embed/");
-  }
-
-  if (!embedUrl) {
-    return <p className="text-muted-foreground italic">No video URL provided.</p>;
-  }
-
-  return (
-    <div className="aspect-video w-full max-w-full rounded-xl overflow-hidden border border-border bg-black">
-      <iframe
-        src={embedUrl}
-        title="Topic Video"
-        className="w-full h-full"
-        allowFullScreen
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      />
-    </div>
-  );
-}
-
-function QuizPageRenderer({ content }: { content: any }) {
-  const questions = content?.questions || [];
-  const [currentQIndex, setCurrentQIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [isAnswered, setIsAnswered] = useState(false);
-  const [score, setScore] = useState(0);
-
-  if (questions.length === 0) {
-    return (
-      <p className="text-muted-foreground italic">No quiz questions provided.</p>
-    );
-  }
-
-  const q = questions[currentQIndex];
-  const isLastQuestion = currentQIndex === questions.length - 1;
-
-  const handleSubmit = () => {
-    if (selectedOption === null) return;
-    setIsAnswered(true);
-    if (selectedOption === q.correct_index) {
-      setScore(score + 1);
-    }
-  };
-
-  const handleNext = () => {
-    if (isLastQuestion) {
-      setCurrentQIndex(0);
-      setSelectedOption(null);
-      setIsAnswered(false);
-      setScore(0);
-      return;
-    }
-    setCurrentQIndex(currentQIndex + 1);
-    setSelectedOption(null);
-    setIsAnswered(false);
-  };
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-6 min-w-0">
-      <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
-        <span>
-          Question {currentQIndex + 1} of {questions.length}
-        </span>
-        <span>Score: {score}</span>
-      </div>
-
-      <div className="bg-card border border-border rounded-xl p-6 min-w-0">
-        <h3 className="text-xl font-semibold mb-6 break-words">{q.question}</h3>
-
-        <div className="space-y-3">
-          {q.options.map((opt: string, i: number) => {
-            const isSelected = selectedOption === i;
-            const isCorrect = i === q.correct_index;
-
-            let optionClass =
-              "border-border hover:border-accent/50 bg-background";
-            if (isAnswered) {
-              if (isCorrect) optionClass = "border-green-500 bg-green-500/10";
-              else if (isSelected && !isCorrect)
-                optionClass = "border-red-500 bg-red-500/10";
-              else optionClass = "border-border opacity-50";
-            } else if (isSelected) {
-              optionClass = "border-accent bg-accent/5 ring-1 ring-accent";
-            }
-
-            return (
-              <button
-                key={i}
-                onClick={() => !isAnswered && setSelectedOption(i)}
-                disabled={isAnswered}
-                className={cn(
-                  "w-full text-left px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-between gap-2 min-w-0",
-                  optionClass
+        {/* Preview */}
+        {firstPage && (
+          <section className="mb-8">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              Preview: page 1
+            </h2>
+            <div className="bg-card border border-border rounded-xl p-5">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+                {previewType === "text" && (
+                  <FileText className="h-3.5 w-3.5" />
                 )}
+                {previewType === "video" && (
+                  <VideoIcon className="h-3.5 w-3.5" />
+                )}
+                {previewType === "quiz" && (
+                  <ClipboardList className="h-3.5 w-3.5" />
+                )}
+                <span className="capitalize">{previewType ?? "page"}</span>
+              </div>
+              {previewBody ? (
+                <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap line-clamp-[12] break-words">
+                  {previewBody}
+                </p>
+              ) : previewType === "video" ? (
+                <p className="text-sm text-muted-foreground italic">
+                  This topic starts with a video page.
+                </p>
+              ) : previewType === "quiz" ? (
+                <p className="text-sm text-muted-foreground italic">
+                  This topic starts with a quiz page.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">
+                  This page has no previewable content.
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Actions */}
+        <section className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {isOwner ? (
+            <>
+              <Link
+                href={`/topics/${topic.id}/edit`}
+                className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-lg bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
               >
-                <span className="break-words min-w-0">{opt}</span>
-                {isAnswered && isCorrect && (
-                  <span className="text-green-600 text-sm font-bold shrink-0">
-                    Correct
-                  </span>
-                )}
-                {isAnswered && isSelected && !isCorrect && (
-                  <span className="text-red-600 text-sm font-bold shrink-0">
-                    Incorrect
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-8 flex justify-end">
-          {!isAnswered ? (
-            <button
-              onClick={handleSubmit}
-              disabled={selectedOption === null}
-              className="h-10 px-6 rounded-md bg-accent text-accent-foreground font-medium disabled:opacity-50 transition-colors"
-            >
-              Check Answer
-            </button>
+                <Pencil className="h-4 w-4" />
+                Edit topic
+              </Link>
+              <Link
+                href={`/topics/${topic.id}/read`}
+                className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-lg border border-border hover:bg-muted font-medium transition-colors"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Read as student
+              </Link>
+            </>
           ) : (
             <button
-              onClick={handleNext}
-              className="h-10 px-6 rounded-md bg-accent text-accent-foreground font-medium transition-colors"
+              onClick={handleStartReading}
+              disabled={starting || pageCount === 0}
+              className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-lg bg-accent text-accent-foreground font-medium hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isLastQuestion ? "Restart Quiz" : "Next Question"}
+              <PlayCircle className="h-4 w-4" />
+              {readButtonLabel}
             </button>
           )}
-        </div>
+        </section>
+
+        {startError && (
+          <p className="mt-3 text-sm text-red-600 bg-red-500/10 p-3 rounded-lg">
+            {startError}
+          </p>
+        )}
+
+        {topic.progress?.is_completed && !isOwner && (
+          <p className="mt-4 inline-flex items-center gap-2 text-sm text-green-600">
+            <CheckCircle2 className="h-4 w-4" />
+            You completed this topic on{" "}
+            {new Date(topic.progress.completed_at!).toLocaleDateString()}.
+          </p>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function MetaCard({
+  icon,
+  label,
+  value,
+  accent,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div
+        className={cn(
+          "inline-flex items-center gap-1.5 text-xs font-medium mb-2",
+          accent ? "text-accent" : "text-muted-foreground"
+        )}
+      >
+        {icon}
+        {label}
       </div>
+      <p className="text-2xl font-bold text-foreground">{value}</p>
     </div>
   );
 }

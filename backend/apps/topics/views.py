@@ -1,8 +1,11 @@
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.views import APIView
 
-from .models import Subject, Topic, TopicPage
+from .models import Subject, Topic, TopicPage, TopicProgress
 from .serializers import (
     SubjectSerializer,
     TopicListSerializer,
@@ -10,6 +13,8 @@ from .serializers import (
     TopicCreateUpdateSerializer,
     TopicPageSerializer,
     TopicPageWriteSerializer,
+    TopicProgressSerializer,
+    TopicProgressWriteSerializer,
 )
 
 
@@ -18,6 +23,24 @@ class SubjectListView(generics.ListAPIView):
     serializer_class = SubjectSerializer
     permission_classes = [permissions.AllowAny]
     pagination_class = None  # Subjects are a small list, return all
+
+
+def _progress_map_for(user, topics):
+    """
+    Build a {topic_id: TopicProgress} dict for the given user and topics.
+
+    Returns an empty dict for anonymous users. Called by views that
+    serialize many topics at once, to avoid one query per card.
+    """
+    if user is None or not user.is_authenticated:
+        return {}
+    topic_ids = [t.id for t in topics]
+    if not topic_ids:
+        return {}
+    return {
+        p.topic_id: p
+        for p in TopicProgress.objects.filter(user=user, topic_id__in=topic_ids)
+    }
 
 
 class TopicListCreateView(generics.ListCreateAPIView):
@@ -33,8 +56,6 @@ class TopicListCreateView(generics.ListCreateAPIView):
             queryset = queryset.filter(subject_id=subject_id)
 
         if self.request.user.is_authenticated:
-            from django.db.models import Q
-
             queryset = queryset.filter(
                 Q(is_published=True) | Q(created_by=self.request.user)
             )
@@ -48,14 +69,21 @@ class TopicListCreateView(generics.ListCreateAPIView):
             return TopicCreateUpdateSerializer
         return TopicListSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Only build the progress map for GET list calls. POST and other
+        # methods do not need it.
+        if self.request.method == "GET":
+            # Force queryset evaluation once so we do not double-query.
+            topics = list(self.get_queryset())
+            context["progress_by_topic"] = _progress_map_for(self.request.user, topics)
+        return context
+
     def create(self, request, *args, **kwargs):
-        # Validate and save with the write serializer
         write_serializer = self.get_serializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
         topic = write_serializer.save(created_by=request.user)
 
-        # Return the full detail representation (includes id, subject,
-        # created_by, pages, etc.)
         read_serializer = TopicDetailSerializer(
             topic, context=self.get_serializer_context()
         )
@@ -75,6 +103,13 @@ class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ["PUT", "PATCH"]:
             return TopicCreateUpdateSerializer
         return TopicDetailSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.method == "GET":
+            topic = self.get_object()
+            context["progress_by_topic"] = _progress_map_for(self.request.user, [topic])
+        return context
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
@@ -140,3 +175,82 @@ class TopicPageDetailView(generics.RetrieveUpdateDestroyAPIView):
                 raise PermissionDenied(
                     "You do not have permission to modify this page."
                 )
+
+class TopicProgressView(APIView):
+    """
+    POST /api/topics/{id}/progress/
+
+    Upserts the requesting user's progress on a topic.
+
+    Request body:
+        { "last_page_index": int, "reset": bool = false }
+
+    - Clamps last_page_index into the topic's page range.
+    - When reset=false (default), last_page_index is monotonic: the
+      stored value is max(stored, incoming). Backward navigation never
+      lowers the high-water mark.
+    - When reset=true, last_page_index is assigned unconditionally and
+      is_completed/completed_at are reset accordingly. Used by "Start
+      from beginning".
+    - is_completed flips True once last_page_index reaches the last
+      page, and completed_at records the timestamp of that flip.
+    - Rejects calls from the topic's own creator.
+    - Rejects calls on topics the user cannot see (unpublished, not owner).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            topic = Topic.objects.prefetch_related("pages").get(pk=pk)
+        except Topic.DoesNotExist:
+            raise NotFound("Topic not found.")
+
+        if topic.created_by_id == request.user.id:
+            raise ValidationError(
+                "Topic creators do not track progress on their own topics."
+            )
+
+        if not topic.is_published:
+            raise PermissionDenied("You cannot read this topic.")
+
+        write_serializer = TopicProgressWriteSerializer(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        incoming_index = write_serializer.validated_data["last_page_index"]
+        reset = write_serializer.validated_data["reset"]
+
+        page_count = topic.pages.count()
+        if page_count == 0:
+            raise ValidationError("This topic has no pages yet.")
+
+        incoming_index = min(incoming_index, page_count - 1)
+
+        progress, _ = TopicProgress.objects.get_or_create(
+            user=request.user, topic=topic
+        )
+
+        if reset:
+            progress.last_page_index = incoming_index
+        else:
+            progress.last_page_index = max(progress.last_page_index, incoming_index)
+
+        was_completed = progress.is_completed
+        is_now_complete = progress.last_page_index >= page_count - 1
+
+        progress.is_completed = is_now_complete
+
+        if is_now_complete and not was_completed:
+            progress.completed_at = timezone.now()
+        elif not is_now_complete:
+            progress.completed_at = None
+
+        progress.save(
+            update_fields=[
+                "last_page_index",
+                "is_completed",
+                "last_visited_at",
+                "completed_at",
+            ]
+        )
+
+        return Response(TopicProgressSerializer(progress).data)

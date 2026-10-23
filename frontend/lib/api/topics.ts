@@ -1,6 +1,6 @@
 import { apiFetch } from "./client";
 import { normalizePaginated, type Paginated } from "./pagination";
-import type { Topic } from "./types";
+import type { Topic, TopicProgress } from "./types";
 
 export async function getTopics(
   subjectId?: number
@@ -45,4 +45,18 @@ export async function updateTopic(
 
 export async function deleteTopic(id: number): Promise<void> {
   return apiFetch<void>(`/topics/${id}/`, { method: "DELETE" });
+}
+
+export async function recordProgress(
+  topicId: number,
+  lastPageIndex: number,
+  options?: { reset?: boolean }
+): Promise<TopicProgress> {
+  return apiFetch<TopicProgress>(`/topics/${topicId}/progress/`, {
+    method: "POST",
+    body: JSON.stringify({
+      last_page_index: lastPageIndex,
+      reset: options?.reset ?? false,
+    }),
+  });
 }
