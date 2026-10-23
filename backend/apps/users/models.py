@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.contrib.auth.validators import UnicodeUsernameValidator
 
 
 class User(AbstractUser):
@@ -11,6 +12,15 @@ class User(AbstractUser):
     (username, email, password, first_name, last_name, is_staff, is_active,
     date_joined, last_login, etc.) is inherited automatically.
     """
+    
+    username = models.CharField(
+        max_length=150,
+        unique=True,
+        db_collation="utf8mb4_bin",
+        error_messages={"unique": "A user with that username already exists."},
+        validators=[UnicodeUsernameValidator()],
+        verbose_name="username",
+    )
 
     # ---- Profile ----
     bio = models.TextField(blank=True)

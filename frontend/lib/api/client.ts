@@ -8,6 +8,11 @@
  *   - Surface non-2xx responses as ApiError with the server's message.
  *   - Preserve the response body on ApiError so callers can inspect
  *     field-level errors (e.g. `{ age_confirmed: [...] }`).
+ *
+ * Auth endpoints are exempt from the refresh-on-401 path. A 401 from
+ * /auth/login/ or /auth/register/ is a credentials failure, not an
+ * expired session, and must surface the backend's message instead of
+ * triggering the refresh-and-redirect flow.
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -17,6 +22,13 @@ if (!API_URL) {
     "NEXT_PUBLIC_API_URL is not set. Copy .env.example to .env.local " +
       "and fill it in, or pass it to `next dev` and `next build`."
   );
+}
+
+// ---------- Auth endpoints that must never trigger a refresh ----------
+const AUTH_EXEMPT_PATHS = ["/auth/login/", "/auth/register/", "/auth/refresh/"];
+
+function isAuthExempt(path: string): boolean {
+  return AUTH_EXEMPT_PATHS.some((p) => path.startsWith(p));
 }
 
 // ---------- Token storage ----------
@@ -102,7 +114,7 @@ export async function apiFetch<T>(
     headers,
   });
 
-  if (res.status === 401 && !isRetry) {
+  if (res.status === 401 && !isRetry && !isAuthExempt(path)) {
     if (!isRefreshing) {
       isRefreshing = true;
       refreshPromise = refreshAccessToken().finally(() => {
@@ -145,17 +157,20 @@ export async function apiFetch<T>(
 }
 
 /**
- * Walk an arbitrary JSON error body and return the first string found.
+ * Walk an arbitrary JSON error body and return the first meaningful
+ * string found.
  *
- * DRF produces several shapes:
+ * DRF and simplejwt produce several shapes:
  *   { "detail": "msg" }
+ *   { "detail": "msg", "code": "..." }          (simplejwt)
  *   { "field": ["msg"] }
  *   { "non_field_errors": ["msg"] }
  *   ["msg"]
  *   "msg"
  *
- * This function returns the first leaf string in any of those shapes,
- * which is what we want for a single-line toast or inline error.
+ * When a `detail` key exists, it is preferred over other strings so
+ * that the human-readable message wins over machine codes like
+ * "no_active_account".
  */
 function firstErrorString(body: unknown): string | null {
   if (typeof body === "string") return body;
@@ -167,7 +182,11 @@ function firstErrorString(body: unknown): string | null {
     return null;
   }
   if (body && typeof body === "object") {
-    for (const value of Object.values(body)) {
+    const obj = body as Record<string, unknown>;
+    if (typeof obj.detail === "string") {
+      return obj.detail;
+    }
+    for (const value of Object.values(obj)) {
       const found = firstErrorString(value);
       if (found) return found;
     }
