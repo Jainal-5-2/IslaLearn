@@ -122,10 +122,11 @@ TopicPage
   - topic (FK), order, page_type (text|video|quiz)
   - content (JSONField: text body / video URL / quiz questions)
 
-TopicProgress (planned — Phase 2.5)
+TopicProgress (Phase 2.5)
   - user (FK), topic (FK)
-  - last_page_index (int), last_visited_at
-  - completed_at (nullable)
+  - last_page_index (int, monotonic high-water mark)
+  - is_completed (bool)
+  - last_visited_at, completed_at (nullable)
   - unique_together = (user, topic)
 
 Request (1:1 demand)
@@ -185,7 +186,7 @@ Topics
   POST   /api/topics/{id}/pages/   (add page)
   PATCH  /api/topics/{id}/pages/{page_id}/
   DELETE /api/topics/{id}/pages/{page_id}/
-  POST   /api/topics/{id}/progress/   (planned — Phase 2.5)
+  POST   /api/topics/{id}/progress/   (upsert; body: last_page_index, reset)
 
 Requests (1:1)
   GET    /api/requests/            (browse open requests)
@@ -219,7 +220,8 @@ Reports
 /register                   → Signup (with 18+ checkbox)
 
 /topics                     → Browse all topics (filter by subject)
-/topics/[id]                → Topic reader (pages, quiz, lock gate)
+/topics/[id]                → Topic detail (metadata, preview, start/continue button)
+/topics/[id]/read           → Topic reader (pages, quiz, lock gate, resume)
 /topics/new                 → Create topic (tutor)
 /topics/[id]/edit           → Edit topic + pages
 
@@ -251,24 +253,48 @@ Reports
 7. Build Topic browse page + Topic reader (with quiz rendering and lock gate).
 8. Build Topic create + edit pages.
 
-**Phase 2.5 — Topic Progress** `[PLANNED, DEFERRED UNTIL AFTER PHASE 3]`
+**Phase 2.5 — Topic Progress** `[DONE]`
 
-*Rationale:* read-tracking makes the dashboard meaningful and adds a natural reason for users to return. Deferred so the Request flow can be finished first; the model is additive and requires no migration of existing data.
+*Rationale:* read-tracking makes the dashboard meaningful and adds a natural
+reason for users to return. Deferred past Phase 3 so the Request flow could
+finish first; the model is additive and required no migration of existing
+data.
 
-- New `TopicProgress` model: `user` (FK), `topic` (FK), `last_page_index`, `last_visited_at`, `completed_at`.
-- `unique_together = (user, topic)`.
-- New endpoint: `POST /api/topics/{id}/progress/` (upsert last page index; set `completed_at` on last page).
-- Extend `TopicDetailSerializer` to include a per-user progress object (hidden when the user is the creator).
-- Reader: auto-save on page change (debounced); resume to last page on load; show a small progress bar in the sidebar header.
-- Browse `/topics`: show a "Continue" badge on in-progress topics; add an "In progress" filter alongside the subject filter.
-- Dashboard: add a "Continue learning" card (up to 3 in-progress topics) and an "In progress" stat card.
+- `TopicProgress` model: `user` (FK), `topic` (FK), `last_page_index`
+  (monotonic high-water mark), `is_completed`, `last_visited_at`,
+  `completed_at`, `unique_together = (user, topic)`.
+- `POST /api/topics/{id}/progress/` accepts `{ last_page_index, reset }`.
+  Normal writes are monotonic (`max(stored, incoming)`). `reset: true`
+  assigns unconditionally and clears `is_completed` / `completed_at`.
+  Rejects writes from the topic's own creator.
+- `TopicDetailSerializer` and `TopicListSerializer` embed a per-user
+  `progress` object, `null` for anonymous users and for the creator.
+- New topic detail page at `/topics/[id]`. The reader moved to
+  `/topics/[id]/read`. The detail page shows metadata, a preview of page 1,
+  and a primary button that branches on `progress`: "Start reading",
+  "Continue reading", or "Read again". The detail page never redirects;
+  returning users see the button, not a bounce into the reader.
+- Reader: debounced save (500ms) on page change; resume to
+  `progress.last_page_index` on load; resume banner with "Start from
+  beginning" that confirms via a modal before resetting; sidebar locks
+  pages beyond `max(activePageIndex, progressLastPageIndex)` and shows a
+  checkmark for pages strictly before it. Owners see the full sidebar and
+  never write progress.
+- Browse `/topics`: "Continue" and "Completed" badges driven by the
+  embedded `progress`.
+- Dashboard cards and the "In progress" filter are deferred to Phase 5
+  (polish). The data is available; the UI is not built.
 
 *Decisions locked in:*
 - Completion = reaching the last page (quiz tracking deferred).
 - No progress for the topic creator.
-- "In progress" filter shows only topics with progress > 0.
+- `last_page_index` is monotonic. Navigating backward does not lower it;
+  only an explicit `reset: true` write does.
+- `is_completed` and `completed_at` are kept in sync by the view. The
+  serializer reads `is_completed` directly from the model.
 - Server-side storage (syncs across devices).
-- No reset button in v1.
+- Reset is available via the resume banner ("Start from beginning"),
+  confirmed by a custom modal, not `window.confirm`.
 
 **Phase 3 — Demand Flow (Requests)** `[DONE]`
 9. Build `Request` + `Application` models and API.

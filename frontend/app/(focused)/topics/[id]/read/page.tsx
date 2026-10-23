@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -42,6 +42,7 @@ export default function Page() {
 
 function TopicReaderPage() {
   const params = useParams();
+  const router = useRouter();
   const topicId = Number(params.id);
 
   const [topic, setTopic] = useState<Topic | null>(null);
@@ -51,14 +52,11 @@ function TopicReaderPage() {
   const [error, setError] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Resume banner: shown only if we auto-resumed to a page > 0.
   const [showResumeBanner, setShowResumeBanner] = useState(false);
-
-  // Confirm dialog for "Start from beginning".
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Furthest page the user has reached, from the server. -1 means
-  // "no progress row". Updated whenever recordProgress resolves.
+  const [finishing, setFinishing] = useState(false);
+
   const [progressLastPageIndex, setProgressLastPageIndex] = useState(-1);
 
   const isOwnerRef = useRef<boolean | null>(null);
@@ -109,7 +107,6 @@ function TopicReaderPage() {
     setIsSidebarOpen(false);
   }, [activePageIndex]);
 
-  // Debounced progress save on page change.
   useEffect(() => {
     if (loading) return;
     if (isOwnerRef.current !== false) return;
@@ -125,9 +122,7 @@ function TopicReaderPage() {
         .then((updated) => {
           setProgressLastPageIndex(updated.last_page_index);
         })
-        .catch(() => {
-          // Fire and forget. A failed save should not disturb reading.
-        });
+        .catch(() => {});
       progressTimerRef.current = null;
     }, PROGRESS_DEBOUNCE_MS);
 
@@ -140,7 +135,6 @@ function TopicReaderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePageIndex, loading]);
 
-  // On unmount, clear any pending save.
   useEffect(() => {
     return () => {
       if (progressTimerRef.current !== null) {
@@ -168,6 +162,17 @@ function TopicReaderPage() {
     }
   }
 
+  async function handleFinish() {
+    if (!topic) return;
+    setFinishing(true);
+    try {
+      await recordProgress(topic.id, activePageIndex).catch(() => {});
+      router.push(`/topics/${topic.id}`);
+    } finally {
+      setFinishing(false);
+    }
+  }
+
   if (loading) {
     return <PageSkeleton variant="reader" />;
   }
@@ -189,6 +194,7 @@ function TopicReaderPage() {
 
   const unlockedUpTo = Math.max(activePageIndex, progressLastPageIndex);
   const completedUpTo = Math.max(activePageIndex, progressLastPageIndex) - 1;
+  const isLastPage = activePageIndex === pages.length - 1;
 
   const handleNext = () => {
     if (activePageIndex < pages.length - 1) {
@@ -213,7 +219,6 @@ function TopicReaderPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      {/* Mobile header */}
       <div className="lg:hidden sticky top-0 z-30 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <button
           onClick={() => setIsSidebarOpen(true)}
@@ -424,7 +429,12 @@ function TopicReaderPage() {
                       <VideoPageRenderer content={activePage.content} />
                     )}
                     {activePage.page_type === "quiz" && (
-                      <QuizPageRenderer content={activePage.content} />
+                      <QuizPageRenderer
+                        content={activePage.content}
+                        onFinish={handleFinish}
+                        isLastPage={isLastPage}
+                        finishing={finishing}
+                      />
                     )}
                   </div>
 
@@ -437,14 +447,27 @@ function TopicReaderPage() {
                       <ChevronLeft className="h-4 w-4" />
                       Previous
                     </button>
-                    <button
-                      onClick={handleNext}
-                      disabled={activePageIndex === pages.length - 1}
-                      className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-accent text-accent-foreground hover:bg-accent/90 font-medium disabled:opacity-50 disabled:pointer-events-none transition-colors"
-                    >
-                      Next
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
+
+                    {isLastPage ? (
+                      activePage.page_type === "quiz" ? null : (
+                        <button
+                          onClick={handleFinish}
+                          disabled={finishing}
+                          className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-green-600 text-white hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          {finishing ? "Finishing..." : "Finished"}
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        onClick={handleNext}
+                        className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-accent text-accent-foreground hover:bg-accent/90 font-medium transition-colors"
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </motion.div>
               </AnimatePresence>
@@ -502,13 +525,11 @@ function ResetProgressDialog({
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
-  // Focus the safe option when the dialog opens.
   useEffect(() => {
     if (!open) return;
     cancelRef.current?.focus();
   }, [open]);
 
-  // Close on Escape.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -625,7 +646,17 @@ function VideoPageRenderer({ content }: { content: any }) {
   );
 }
 
-function QuizPageRenderer({ content }: { content: any }) {
+function QuizPageRenderer({
+  content,
+  onFinish,
+  isLastPage,
+  finishing,
+}: {
+  content: any;
+  onFinish: () => void;
+  isLastPage: boolean;
+  finishing: boolean;
+}) {
   const questions = content?.questions || [];
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -716,7 +747,7 @@ function QuizPageRenderer({ content }: { content: any }) {
           })}
         </div>
 
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex flex-wrap justify-end gap-2">
           {!isAnswered ? (
             <button
               onClick={handleSubmit}
@@ -726,12 +757,28 @@ function QuizPageRenderer({ content }: { content: any }) {
               Check Answer
             </button>
           ) : (
-            <button
-              onClick={handleNext}
-              className="h-10 px-6 rounded-md bg-accent text-accent-foreground font-medium transition-colors"
-            >
-              {isLastQuestion ? "Restart Quiz" : "Next Question"}
-            </button>
+            <>
+              <button
+                onClick={handleNext}
+                className="h-10 px-6 rounded-md bg-accent text-accent-foreground font-medium transition-colors"
+              >
+                {isLastQuestion ? "Restart Quiz" : "Next Question"}
+              </button>
+              {isLastQuestion && (
+                <button
+                  onClick={isLastPage ? onFinish : handleNext}
+                  disabled={finishing}
+                  className="inline-flex items-center gap-1 h-10 px-6 rounded-md bg-green-600 text-white hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  {isLastPage
+                    ? finishing
+                      ? "Finishing..."
+                      : "Finished"
+                    : "Next"}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
