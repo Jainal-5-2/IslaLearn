@@ -25,7 +25,30 @@ class TopicPageSerializer(serializers.ModelSerializer):
         if request.user == obj.topic.created_by:
             return False
 
+        # Paywall: has this user unlocked this topic? is_unlocked is a
+        # separate concept from last_page_index. A user with progress but
+        # no unlock still sees pages past free_page_count as locked.
+        progress = self._progress_for(obj.topic_id)
+        if progress is not None and progress.is_unlocked:
+            return False
+
         return obj.order > obj.topic.free_page_count
+
+    def _progress_for(self, topic_id):
+        """
+        Look up the requesting user's TopicProgress for this topic.
+        Prefers the preloaded dict on context to avoid N+1 queries on
+        the detail endpoint, which serializes every page.
+        """
+        preloaded = self.context.get("progress_by_topic")
+        if preloaded is not None:
+            return preloaded.get(topic_id)
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            return None
+        return TopicProgress.objects.filter(user=user, topic_id=topic_id).first()
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -54,6 +77,7 @@ class TopicProgressSerializer(serializers.ModelSerializer):
         model = TopicProgress
         fields = [
             "last_page_index",
+            "is_unlocked",
             "is_completed",
             "last_visited_at",
             "completed_at",
@@ -117,7 +141,7 @@ class TopicListSerializer(_TopicProgressFieldMixin, serializers.ModelSerializer)
 class TopicDetailSerializer(_TopicProgressFieldMixin, serializers.ModelSerializer):
     subject = SubjectSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
-    pages = TopicPageSerializer(many=True, read_only=True)
+    pages = serializers.SerializerMethodField()
     progress = serializers.SerializerMethodField()
 
     class Meta:
@@ -134,6 +158,15 @@ class TopicDetailSerializer(_TopicProgressFieldMixin, serializers.ModelSerialize
             "progress",
             "created_at",
         ]
+
+    def get_pages(self, obj):
+        # Pass context down to the page serializer so its is_locked method
+        # can see progress_by_topic.
+        return TopicPageSerializer(
+            obj.pages.all(),
+            many=True,
+            context=self.context,
+        ).data
 
 
 class TopicCreateUpdateSerializer(serializers.ModelSerializer):

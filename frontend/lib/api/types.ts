@@ -20,6 +20,7 @@ export type Subject = {
 // ---------- Topic Progress ----------
 export type TopicProgress = {
   last_page_index: number;
+  is_unlocked: boolean;
   is_completed: boolean;
   last_visited_at: string;
   completed_at: string | null;

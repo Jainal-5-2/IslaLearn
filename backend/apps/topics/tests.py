@@ -23,6 +23,7 @@ class TopicProgressTests(APITestCase):
       - completed_at is set on the False -> True transition and is not
         cleared by monotonic writes afterward.
       - Repeated calls update the same row, never create a second one.
+      - Progress writes never touch is_unlocked.
     """
 
     def setUp(self):
@@ -86,6 +87,7 @@ class TopicProgressTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["last_page_index"], 0)
         self.assertFalse(response.data["is_completed"])
+        self.assertFalse(response.data["is_unlocked"])
 
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
         self.assertEqual(progress.last_page_index, 0)
@@ -121,7 +123,6 @@ class TopicProgressTests(APITestCase):
     def test_backward_navigation_does_not_lower_last_page_index(self):
         self._login(self.reader)
         self.client.post(self.url, {"last_page_index": 3})
-        # Navigate backward to page 1. Monotonic: stays at 3.
         response = self.client.post(self.url, {"last_page_index": 1})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["last_page_index"], 3)
@@ -136,8 +137,6 @@ class TopicProgressTests(APITestCase):
         ).completed_at
         self.assertIsNotNone(first_completed_at)
 
-        # A lower write is clamped up to the high-water mark, so completion
-        # cannot be lost by navigating backward.
         response = self.client.post(self.url, {"last_page_index": 1})
         self.assertEqual(response.data["last_page_index"], 4)
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
@@ -165,6 +164,12 @@ class TopicProgressTests(APITestCase):
         self.assertFalse(progress.is_completed)
         self.assertIsNone(progress.completed_at)
 
+    def test_progress_does_not_change_is_unlocked(self):
+        self._login(self.reader)
+        self.client.post(self.url, {"last_page_index": 3})
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertFalse(progress.is_unlocked)
+
 
 class TopicDetailProgressTests(APITestCase):
     """
@@ -175,7 +180,7 @@ class TopicDetailProgressTests(APITestCase):
       - Anonymous users get progress: null.
       - The topic owner gets progress: null.
       - A reader who has never opened the topic gets progress: null.
-      - A reader with progress gets the row inline.
+      - A reader with progress gets the row inline, including is_unlocked.
     """
 
     def setUp(self):
@@ -226,13 +231,20 @@ class TopicDetailProgressTests(APITestCase):
         self.assertIsNotNone(response.data["progress"])
         self.assertEqual(response.data["progress"]["last_page_index"], 1)
         self.assertFalse(response.data["progress"]["is_completed"])
+        self.assertFalse(response.data["progress"]["is_unlocked"])
 
 
 class TopicPageLockTests(APITestCase):
     """
-    Locks in the fix from earlier: locked pages must not leak content
-    through the list endpoint or the detail endpoint, for any viewer
-    who is not the topic owner.
+    Covers TopicPageSerializer.is_locked, which enforces the paywall.
+
+    Rule:
+      - Anonymous user: pages past free_page_count are locked.
+      - Topic owner: never locked.
+      - Reader with a TopicProgress row but is_unlocked=False:
+        pages past free_page_count are still locked. Row existence is
+        not enough; only is_unlocked lifts the paywall.
+      - Reader with is_unlocked=True: every page is readable.
     """
 
     def setUp(self):
@@ -269,10 +281,8 @@ class TopicPageLockTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         by_order = {p["order"]: p for p in response.data["results"]}
-        # Pages 1 and 2 are free.
         self.assertEqual(by_order[1]["content"], {"body": "Secret 1"})
         self.assertFalse(by_order[1]["is_locked"])
-        # Pages 3 and 4 are locked: content stripped, flag set.
         self.assertEqual(by_order[3]["content"], {})
         self.assertTrue(by_order[3]["is_locked"])
         self.assertEqual(by_order[4]["content"], {})
@@ -284,7 +294,7 @@ class TopicPageLockTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         for page in response.data["results"]:
             self.assertFalse(page["is_locked"])
-            self.assertTrue(page["content"])  # non-empty
+            self.assertTrue(page["content"])
 
     def test_detail_endpoint_strips_locked_content_for_reader(self):
         self.client.force_authenticate(user=self.reader)
@@ -299,3 +309,161 @@ class TopicPageLockTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["is_locked"])
         self.assertEqual(response.data["content"], {"body": "Secret 3"})
+
+    # ---------- Paywall rule ----------
+
+    def test_progress_without_unlock_still_locks_past_free_count(self):
+        # A row exists (the user has read to page 2), but they have not
+        # unlocked. is_locked must still be True past free_page_count.
+        TopicProgress.objects.create(
+            user=self.reader,
+            topic=self.topic,
+            last_page_index=1,
+            is_unlocked=False,
+        )
+        self.client.force_authenticate(user=self.reader)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        by_order = {p["order"]: p for p in response.data["results"]}
+        self.assertFalse(by_order[1]["is_locked"])
+        self.assertFalse(by_order[2]["is_locked"])
+        self.assertTrue(by_order[3]["is_locked"])
+        self.assertEqual(by_order[3]["content"], {})
+        self.assertTrue(by_order[4]["is_locked"])
+        self.assertEqual(by_order[4]["content"], {})
+
+    def test_unlock_lifts_paywall_on_all_pages(self):
+        TopicProgress.objects.create(
+            user=self.reader,
+            topic=self.topic,
+            last_page_index=0,
+            is_unlocked=True,
+        )
+        self.client.force_authenticate(user=self.reader)
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        by_order = {p["order"]: p for p in response.data["results"]}
+        for order in (1, 2, 3, 4):
+            self.assertFalse(by_order[order]["is_locked"])
+            self.assertEqual(
+                by_order[order]["content"], {"body": f"Secret {order}"}
+            )
+
+
+class TopicUnlockTests(APITestCase):
+    """
+    Covers POST /api/topics/{id}/unlock/.
+
+    Invariants:
+      - Anonymous users get 401.
+      - Topic owner gets 400 (never paywalled on their own topic).
+      - Unpublished topic gets 403.
+      - Unknown topic gets 404.
+      - Unlock sets is_unlocked=True and creates the row if missing.
+      - Unlock is idempotent: second call returns 200, row unchanged.
+      - Unlock does not touch last_page_index, is_completed, completed_at.
+      - Unlock does not change last_page_index on an existing row.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="unlockowner", password="pass-uo-1", email="uo@example.com"
+        )
+        self.reader = User.objects.create_user(
+            username="unlockreader", password="pass-ur-1", email="ur@example.com"
+        )
+        self.subject = Subject.objects.create(name="Algorithms")
+        self.topic = Topic.objects.create(
+            subject=self.subject,
+            created_by=self.owner,
+            title="Unlock topic",
+            is_published=True,
+            free_page_count=2,
+        )
+        for i in range(1, 5):
+            TopicPage.objects.create(
+                topic=self.topic,
+                order=i,
+                page_type="text",
+                content={"body": f"Secret {i}"},
+            )
+        self.url = reverse("topic-unlock", args=[self.topic.id])
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_anonymous_is_rejected(self):
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_owner_cannot_unlock_own_topic(self):
+        self._login(self.owner)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_unpublished_topic_is_rejected(self):
+        self.topic.is_published = False
+        self.topic.save(update_fields=["is_published"])
+        self._login(self.reader)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unknown_topic_is_not_found(self):
+        self._login(self.reader)
+        response = self.client.post(
+            reverse("topic-unlock", args=[999999])
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_unlock_creates_row_if_missing(self):
+        self.assertFalse(
+            TopicProgress.objects.filter(
+                user=self.reader, topic=self.topic
+            ).exists()
+        )
+        self._login(self.reader)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_unlocked"])
+        self.assertEqual(response.data["last_page_index"], 0)
+        self.assertFalse(response.data["is_completed"])
+
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertTrue(progress.is_unlocked)
+        self.assertEqual(progress.last_page_index, 0)
+
+    def test_unlock_preserves_existing_progress(self):
+        TopicProgress.objects.create(
+            user=self.reader,
+            topic=self.topic,
+            last_page_index=2,
+            is_unlocked=False,
+        )
+        self._login(self.reader)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_unlocked"])
+        self.assertEqual(response.data["last_page_index"], 2)
+
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertTrue(progress.is_unlocked)
+        self.assertEqual(progress.last_page_index, 2)
+
+    def test_unlock_is_idempotent(self):
+        self._login(self.reader)
+        first = self.client.post(self.url)
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertTrue(first.data["is_unlocked"])
+
+        second = self.client.post(self.url)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(second.data["is_unlocked"])
+
+        self.assertEqual(
+            TopicProgress.objects.filter(
+                user=self.reader, topic=self.topic
+            ).count(),
+            1,
+        )

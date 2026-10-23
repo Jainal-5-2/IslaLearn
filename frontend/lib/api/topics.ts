@@ -60,3 +60,9 @@ export async function recordProgress(
     }),
   });
 }
+
+export async function unlockTopic(topicId: number): Promise<TopicProgress> {
+  return apiFetch<TopicProgress>(`/topics/${topicId}/unlock/`, {
+    method: "POST",
+  });
+}

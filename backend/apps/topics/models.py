@@ -87,10 +87,14 @@ class TopicProgress(models.Model):
 
     - last_page_index: monotonic high-water mark of the furthest page the
       user has reached. Never decreases except via an explicit reset.
+    - is_unlocked: paywall state. True means the user can read every page
+      of the topic, past free_page_count. False means pages past
+      free_page_count stay locked. Independent of last_page_index.
     - is_completed: set once last_page_index reaches the last page.
     - completed_at: timestamp of when is_completed flipped to True, for
       display. Null while not completed.
-    - One row per (user, topic). Upserted by the progress endpoint.
+    - One row per (user, topic). Upserted by the progress and unlock
+      endpoints.
     - Topics created by the user do not get progress rows.
     """
 
@@ -105,6 +109,14 @@ class TopicProgress(models.Model):
         related_name="progress_entries",
     )
     last_page_index = models.PositiveIntegerField(default=0)
+
+    # Paywall state. Separate from reading progress: last_page_index is
+    # how far the user has read, is_unlocked is whether they have access
+    # to pages past free_page_count. The Unlock button on the gate sets
+    # this to True during MVP. When payments land, the payment webhook
+    # sets it.
+    is_unlocked = models.BooleanField(default=False)
+
     is_completed = models.BooleanField(default=False)
     last_visited_at = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)

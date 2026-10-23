@@ -71,10 +71,7 @@ class TopicListCreateView(generics.ListCreateAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Only build the progress map for GET list calls. POST and other
-        # methods do not need it.
         if self.request.method == "GET":
-            # Force queryset evaluation once so we do not double-query.
             topics = list(self.get_queryset())
             context["progress_by_topic"] = _progress_map_for(self.request.user, topics)
         return context
@@ -113,7 +110,6 @@ class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
-        # Only the creator can edit or delete.
         if request.method in ["PUT", "PATCH", "DELETE"]:
             if obj.created_by != request.user:
                 raise PermissionDenied(
@@ -140,13 +136,21 @@ class TopicPageListCreateView(generics.ListCreateAPIView):
             return TopicPageWriteSerializer
         return TopicPageSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.method == "GET":
+            topic = self.get_topic()
+            context["progress_by_topic"] = _progress_map_for(
+                self.request.user, [topic]
+            )
+        return context
+
     def get_queryset(self):
         topic = self.get_topic()
         return TopicPage.objects.filter(topic=topic)
 
     def perform_create(self, serializer):
         topic = self.get_topic()
-        # If an order isn't provided, put it at the end
         order = self.request.data.get("order")
         if not order:
             last_page = topic.pages.order_by("-order").first()
@@ -164,17 +168,30 @@ class TopicPageDetailView(generics.RetrieveUpdateDestroyAPIView):
             return TopicPageWriteSerializer
         return TopicPageSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.method == "GET":
+            topic_id = self.kwargs.get("topic_id")
+            try:
+                topic = Topic.objects.get(id=topic_id)
+            except Topic.DoesNotExist:
+                raise NotFound("Topic not found.")
+            context["progress_by_topic"] = _progress_map_for(
+                self.request.user, [topic]
+            )
+        return context
+
     def get_queryset(self):
         return TopicPage.objects.filter(topic_id=self.kwargs.get("topic_id"))
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
-        # Only the topic creator can edit or delete pages.
         if request.method in ["PUT", "PATCH", "DELETE"]:
             if obj.topic.created_by != request.user:
                 raise PermissionDenied(
                     "You do not have permission to modify this page."
                 )
+
 
 class TopicProgressView(APIView):
     """
@@ -196,6 +213,7 @@ class TopicProgressView(APIView):
       page, and completed_at records the timestamp of that flip.
     - Rejects calls from the topic's own creator.
     - Rejects calls on topics the user cannot see (unpublished, not owner).
+    - Does not touch is_unlocked. Paywall and progress are separate.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -252,5 +270,48 @@ class TopicProgressView(APIView):
                 "completed_at",
             ]
         )
+
+        return Response(TopicProgressSerializer(progress).data)
+
+
+class TopicUnlockView(APIView):
+    """
+    POST /api/topics/{id}/unlock/
+
+    Lifts the paywall for the requesting user on this topic.
+
+    Sets TopicProgress.is_unlocked to True. Idempotent: calling twice
+    returns 200 both times. Does not touch last_page_index, is_completed,
+    or completed_at; paywall and progress are independent.
+
+    Rejects calls from the topic's own creator (they are never paywalled
+    on their own topic). Rejects calls on drafts. Creates a TopicProgress
+    row if one does not exist yet, so a hypothetical buy button on the
+    detail page (before the user has opened the reader) can call this
+    endpoint without a separate "start progress" step.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            topic = Topic.objects.get(pk=pk)
+        except Topic.DoesNotExist:
+            raise NotFound("Topic not found.")
+
+        if topic.created_by_id == request.user.id:
+            raise ValidationError(
+                "Topic creators cannot unlock their own topics."
+            )
+
+        if not topic.is_published:
+            raise PermissionDenied("You cannot unlock this topic.")
+
+        progress, _ = TopicProgress.objects.get_or_create(
+            user=request.user, topic=topic
+        )
+        if not progress.is_unlocked:
+            progress.is_unlocked = True
+            progress.save(update_fields=["is_unlocked", "last_visited_at"])
 
         return Response(TopicProgressSerializer(progress).data)

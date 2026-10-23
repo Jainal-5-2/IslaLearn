@@ -44,6 +44,7 @@ export {
   updateTopic,
   deleteTopic,
   recordProgress,
+  unlockTopic,
 } from "./topics";
 
 // Pages

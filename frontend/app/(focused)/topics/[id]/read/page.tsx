@@ -20,6 +20,7 @@ import {
   getTopic,
   getMe,
   recordProgress,
+  unlockTopic,
   Topic,
   TopicPage,
   User,
@@ -56,6 +57,7 @@ function TopicReaderPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const [finishing, setFinishing] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
 
   const [progressLastPageIndex, setProgressLastPageIndex] = useState(-1);
 
@@ -159,6 +161,21 @@ function TopicReaderPage() {
           setProgressLastPageIndex(updated.last_page_index);
         })
         .catch(() => {});
+    }
+  }
+
+  async function handleUnlock() {
+    if (!topic) return;
+    setUnlocking(true);
+    try {
+      await unlockTopic(topic.id);
+      // Refetch so the now-unlocked pages come back with real content.
+      const refreshed = await getTopic(topic.id);
+      setTopic(refreshed);
+    } catch (err) {
+      // Leave the gate visible. The user can retry.
+    } finally {
+      setUnlocking(false);
     }
   }
 
@@ -404,7 +421,11 @@ function TopicReaderPage() {
                 )}
               </div>
             ) : activePage.is_locked ? (
-              <LockGate page={activePage} />
+              <LockGate
+                pageIndex={activePageIndex}
+                onUnlock={handleUnlock}
+                unlocking={unlocking}
+              />
             ) : (
               <AnimatePresence mode="wait">
                 <motion.div
@@ -488,7 +509,15 @@ function TopicReaderPage() {
 
 // ---------- Renderers ----------
 
-function LockGate({ page }: { page: TopicPage }) {
+function LockGate({
+  pageIndex,
+  onUnlock,
+  unlocking,
+}: {
+  pageIndex: number;
+  onUnlock: () => void;
+  unlocking: boolean;
+}) {
   return (
     <div className="flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-card border border-border rounded-2xl p-8 text-center shadow-sm">
@@ -497,15 +526,15 @@ function LockGate({ page }: { page: TopicPage }) {
         </div>
         <h2 className="text-2xl font-bold mb-2">Continue learning</h2>
         <p className="text-muted-foreground mb-6">
-          This page is locked. In the future, you&apos;ll be able to unlock it
-          by purchasing the topic. For now, everything is free during the MVP
-          phase.
+          Page {pageIndex + 1} is past the free preview. Unlock the rest of
+          this topic to keep reading.
         </p>
         <button
-          disabled
-          className="w-full h-10 rounded-md bg-accent text-accent-foreground font-medium opacity-50 cursor-not-allowed"
+          onClick={onUnlock}
+          disabled={unlocking}
+          className="w-full h-10 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          Unlock (Coming Soon)
+          {unlocking ? "Unlocking..." : "Unlock this topic"}
         </button>
       </div>
     </div>
@@ -593,7 +622,7 @@ function ResetProgressDialog({
               </button>
               <button
                 onClick={onConfirm}
-                className="h-10 px-4 rounded-md bg-red-600 text-white font-medium hover:bg-red-700 transition-colors"
+                className="h-10 rounded-md bg-red-600 text-white font-medium hover:bg-red-700 transition-colors"
               >
                 Reset progress
               </button>

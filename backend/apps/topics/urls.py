@@ -6,6 +6,7 @@ from .views import (
     TopicPageListCreateView,
     TopicPageDetailView,
     TopicProgressView,
+    TopicUnlockView,
 )
 
 urlpatterns = [
@@ -26,5 +27,9 @@ urlpatterns = [
     # Progress
     path(
         "topics/<int:pk>/progress/", TopicProgressView.as_view(), name="topic-progress"
+    ),
+    # Paywall unlock
+    path(
+        "topics/<int:pk>/unlock/", TopicUnlockView.as_view(), name="topic-unlock"
     ),
 ]
