@@ -9,6 +9,13 @@ export {
   setTokens,
 } from "./client";
 
+// Pagination helpers
+export {
+  normalizeList,
+  normalizePaginated,
+  type Paginated,
+} from "./pagination";
+
 // Types
 export type {
   User,

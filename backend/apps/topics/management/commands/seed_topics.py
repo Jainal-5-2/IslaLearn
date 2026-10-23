@@ -137,7 +137,7 @@ TOPICS = [
                     "body": (
                         "What recursion actually is\n\n"
                         "A recursive function is a function that calls itself. "
-                        "That's it ? there's no special syntax, no keywords, "
+                        "That's it. There's no special syntax, no keywords, "
                         "just a function that shows up in its own body. The "
                         "hard part isn't writing recursion; it's convincing "
                         "yourself it works.\n\n"
@@ -147,7 +147,7 @@ TOPICS = [
                         "2. A *recursive case*: the function calls itself on a "
                         "smaller version of the input, trusting it to return "
                         "the right answer.\n\n"
-                        "That second word ? *trusting* ? is the mental shift. "
+                        "That second word (*trusting*) is the mental shift. "
                         "You don't trace the whole call stack in your head. "
                         "You convince yourself that if the recursive call "
                         "works for a smaller input, your function is correct "
@@ -179,8 +179,8 @@ TOPICS = [
                         "        if node is None:\n"
                         "            return 0\n"
                         "        return 1 + length_rec(node.next)\n\n"
-                        "The base case is `node is None` ? an empty list has "
-                        "length 0. The recursive case says: the length of a "
+                        "The base case is `node is None` (an empty list has "
+                        "length 0). The recursive case says: the length of a "
                         "list starting at `node` is 1 (for `node` itself) plus "
                         "the length of the list starting at `node.next`.\n\n"
                         "Trace it on `1 -> 2 -> 3 -> None`:\n\n"
@@ -220,8 +220,8 @@ TOPICS = [
                         "fine. But if you write `contains(node.next, target)` "
                         "without `return`, Python executes the call, then "
                         "discards its result and returns `None`. This is one "
-                        "of the most common beginner mistakes with recursion ? "
-                        "don't forget the `return` on the recursive case."
+                        "of the most common beginner mistakes with recursion. "
+                        "Don't forget the `return` on the recursive case."
                     )
                 },
             },
@@ -260,7 +260,7 @@ TOPICS = [
         "description": (
             "Every web app you've ever used is built on HTTP. This topic "
             "walks through what actually happens when you type a URL and hit "
-            "Enter ? request, response, headers, status codes."
+            "Enter: request, response, headers, status codes."
         ),
         "is_published": True,
         "free_page_count": 2,
@@ -277,9 +277,9 @@ TOPICS = [
                         "request, the server sends a response.\n\n"
                         "HTTP is *stateless*: the server doesn't remember you "
                         "between requests. If you log in, close your browser, "
-                        "and come back, the server has no idea it's you ? "
-                        "unless you send something (a cookie, a token) that "
-                        "proves it. This is why authentication exists.\n\n"
+                        "and come back, the server has no idea it's you unless "
+                        "you send something (a cookie, a token) that proves it. "
+                        "This is why authentication exists.\n\n"
                         "HTTP is *not*:\n\n"
                         "- Encrypted (HTTPS adds encryption; HTTP alone is "
                         "plaintext)\n"
@@ -306,13 +306,13 @@ TOPICS = [
                         "    Accept: text/html\n\n"
                         "That's the whole request. Four lines. The first line "
                         "is the *request line*: method, path, protocol version. "
-                        "Everything after that is a *header* ? a key-value pair "
+                        "Everything after that is a *header*, a key-value pair "
                         "the server might care about.\n\n"
                         "Methods tell the server what kind of action you want:\n\n"
-                        "- `GET` ? read something, no side effects\n"
-                        "- `POST` ? create something (submit a form, upload a file)\n"
-                        "- `PATCH` ? modify something partially\n"
-                        "- `DELETE` ? remove something\n\n"
+                        "- `GET`: read something, no side effects\n"
+                        "- `POST`: create something (submit a form, upload a file)\n"
+                        "- `PATCH`: modify something partially\n"
+                        "- `DELETE`: remove something\n\n"
                         "There are more (`PUT`, `HEAD`, `OPTIONS`), but those "
                         "four cover most of what you'll write."
                     )
@@ -334,10 +334,10 @@ TOPICS = [
                         "\"the request succeeded, here's the thing you asked "
                         "for.\"\n\n"
                         "Status codes come in five families:\n\n"
-                        "- `2xx` ? success (200, 201, 204)\n"
-                        "- `3xx` ? redirect (301, 302, 304)\n"
-                        "- `4xx` ? client error (400, 401, 403, 404)\n"
-                        "- `5xx` ? server error (500, 502, 503)\n\n"
+                        "- `2xx`: success (200, 201, 204)\n"
+                        "- `3xx`: redirect (301, 302, 304)\n"
+                        "- `4xx`: client error (400, 401, 403, 404)\n"
+                        "- `5xx`: server error (500, 502, 503)\n\n"
                         "If you see a 4xx, *you* (the client) sent something the "
                         "server couldn't accept. If you see a 5xx, the server "
                         "messed up. Those are the two most useful status-code "
@@ -387,9 +387,9 @@ TOPICS = [
         "subject": "Algorithms",
         "title": "Big-O Notation Without the Math Scare",
         "description": (
-            "Big-O isn't about counting operations ? it's about how a "
+            "Big-O isn't about counting operations. It's about how a "
             "program's runtime grows as the input grows. This topic covers "
-            "the practical core: O(1), O(log n), O(n), O(n log n), O(n²), "
+            "the practical core: O(1), O(log n), O(n), O(n log n), O(n^2), "
             "and how to eyeball which one a loop has."
         ),
         "is_published": True,
@@ -403,17 +403,17 @@ TOPICS = [
                         "Big-O notation answers one question: *as the input "
                         "gets larger, how does the number of steps grow?* Not "
                         "the exact number of steps, not the constant factor "
-                        "multiplied in front ? just the *shape* of the growth.\n\n"
+                        "multiplied in front, just the *shape* of the growth.\n\n"
                         "This is why we drop constants. `O(2n)` and `O(n)` are "
                         "both written `O(n)` because doubling the input doubles "
                         "the work in both. The 2 doesn't matter when you're "
-                        "asking \"how does it scale?\" ? it's a fixed multiplier "
+                        "asking \"how does it scale?\" It's a fixed multiplier "
                         "that doesn't change as `n` grows.\n\n"
-                        "Similarly, `O(n² + 100n)` is written `O(n²)` because "
-                        "once `n` is large enough, the `n²` term dwarfs the "
+                        "Similarly, `O(n^2 + 100n)` is written `O(n^2)` because "
+                        "once `n` is large enough, the `n^2` term dwarfs the "
                         "`100n` term. Big-O only cares about the dominant term.\n\n"
                         "This is a useful simplification, not a universal one. "
-                        "If `n` is always small (say, ? 100), a slower-growing "
+                        "If `n` is always small (say, up to 100), a slower-growing "
                         "algorithm with a big constant might beat a faster-"
                         "growing one. But when you're comparing algorithms for "
                         "an exam, an interview, or a real production workload "
@@ -426,19 +426,19 @@ TOPICS = [
                 "content": {
                     "body": (
                         "The five growth shapes you'll see most\n\n"
-                        "- `O(1)` ? constant time. The number of operations "
+                        "- `O(1)`: constant time. The number of operations "
                         "doesn't depend on `n`. Example: index into an array "
                         "(`arr[5]`).\n\n"
-                        "- `O(log n)` ? logarithmic. Each step roughly halves "
+                        "- `O(log n)`: logarithmic. Each step roughly halves "
                         "the remaining work. Example: binary search on a sorted "
                         "array. Doubling `n` adds *one* step.\n\n"
-                        "- `O(n)` ? linear. The work grows proportionally to "
+                        "- `O(n)`: linear. The work grows proportionally to "
                         "`n`. Example: sum every element of an array.\n\n"
-                        "- `O(n log n)` ? the classic sorting complexity. "
+                        "- `O(n log n)`: the classic sorting complexity. "
                         "Merge sort and quicksort (average case) live here. "
                         "Slightly worse than linear, much better than quadratic.\n\n"
-                        "- `O(n²)` ? quadratic. The work is roughly proportional "
-                        "to `n²`. Example: a nested loop where the inner loop "
+                        "- `O(n^2)`: quadratic. The work is roughly proportional "
+                        "to `n^2`. Example: a nested loop where the inner loop "
                         "iterates over all of `n` for each iteration of the "
                         "outer loop.\n\n"
                         "That's the whole spectrum for 95% of code you'll read. "
@@ -455,14 +455,14 @@ TOPICS = [
                         "Eyeballing a loop\n\n"
                         "Rule of thumb: count nested loops. One loop over `n` "
                         "items is `O(n)`. Two nested loops over `n` items each "
-                        "is `O(n²)`. Three nested loops is `O(n³)`. This works "
+                        "is `O(n^2)`. Three nested loops is `O(n^3)`. This works "
                         "as long as each loop actually iterates `n` times and "
                         "the input size is the thing you're counting.\n\n"
                         "    # O(n): one loop\n"
                         "    total = 0\n"
                         "    for x in arr:\n"
                         "        total += x\n\n"
-                        "    # O(n²): two nested loops\n"
+                        "    # O(n^2): two nested loops\n"
                         "    for x in arr:\n"
                         "        for y in arr:\n"
                         "            print(x, y)\n\n"
@@ -471,8 +471,8 @@ TOPICS = [
                         "        i = binary_search(sorted_arr, x)\n\n"
                         "Two wrinkles:\n\n"
                         "1. A loop that runs a constant number of times isn't "
-                        "`O(n)` ? `for i in range(10): ...` is `O(1)`.\n\n"
-                        "2. A loop over half the array is still `O(n)` ? the "
+                        "`O(n)`: `for i in range(10): ...` is `O(1)`.\n\n"
+                        "2. A loop over half the array is still `O(n)`: the "
                         "constant `1/2` drops. `O(n/2) = O(n)`.\n\n"
                         "Once you can eyeball loops, you can reason about most "
                         "algorithms you'll read in class without doing the full "
@@ -486,12 +486,12 @@ TOPICS = [
                     "questions": [
                         {
                             "question": "What is the Big-O complexity of accessing `arr[i]`?",
-                            "options": ["O(1)", "O(log n)", "O(n)", "O(n²)"],
+                            "options": ["O(1)", "O(log n)", "O(n)", "O(n^2)"],
                             "correct_index": 0,
                         },
                         {
                             "question": "Two nested loops over the same `n`-item array. What's the complexity?",
-                            "options": ["O(1)", "O(n)", "O(n log n)", "O(n²)"],
+                            "options": ["O(1)", "O(n)", "O(n log n)", "O(n^2)"],
                             "correct_index": 3,
                         },
                         {
@@ -513,7 +513,7 @@ TOPICS = [
         "subject": "SQL",
         "title": "SQL Joins Explained With Real Examples",
         "description": (
-            "Inner, left, right, and full outer joins ? what each one returns "
+            "Inner, left, right, and full outer joins: what each one returns "
             "and when to use it. Includes the one-sentence rule that makes "
             "joins click."
         ),
@@ -529,8 +529,8 @@ TOPICS = [
                         "storing a student's name on every row of an "
                         "`enrollments` table, you store a `student_id` and look "
                         "up the name in a `students` table when you need it. "
-                        "This is fine until you want to display *both* ? the "
-                        "enrollment and the student's name ? in one result.\n\n"
+                        "This is fine until you want to display *both* (the "
+                        "enrollment and the student's name) in one result.\n\n"
                         "That's what a join does: it combines rows from two "
                         "tables based on a related column.\n\n"
                         "    SELECT students.name, enrollments.course\n"
@@ -563,13 +563,13 @@ TOPICS = [
                         "LEFT JOIN (or LEFT OUTER JOIN)\n\n"
                         "Returns all rows from the left table, plus matched "
                         "rows from the right. If a student has no enrollments, "
-                        "they still appear ? with `NULL` in the enrollment "
+                        "they still appear, with `NULL` in the enrollment "
                         "columns.\n\n"
                         "    SELECT students.name, enrollments.course\n"
                         "    FROM students\n"
                         "    LEFT JOIN enrollments ON students.id = enrollments.student_id;\n\n"
                         "This is the join you want when you're asking \"who has "
-                        "*not* done X?\" ? join, filter to `WHERE enrollments.id IS NULL`, "
+                        "*not* done X?\" Join, filter to `WHERE enrollments.id IS NULL`, "
                         "and you have the students with no enrollments."
                     )
                 },
@@ -581,13 +581,13 @@ TOPICS = [
                         "RIGHT JOIN and FULL OUTER JOIN\n\n"
                         "`RIGHT JOIN` is the mirror of `LEFT JOIN`: all rows "
                         "from the right table, plus matches from the left. In "
-                        "practice, most people never write `RIGHT JOIN` ? they "
+                        "practice, most people never write `RIGHT JOIN`. They "
                         "swap the two tables and use `LEFT JOIN` instead, "
                         "because it reads more naturally. MySQL supports both; "
                         "SQLite (until recently) only supported LEFT.\n\n"
                         "`FULL OUTER JOIN` returns all rows from both sides, "
                         "matched where possible, `NULL` where not. MySQL does "
-                        "*not* support `FULL OUTER JOIN` directly ? you have to "
+                        "*not* support `FULL OUTER JOIN` directly. You have to "
                         "emulate it with a `LEFT JOIN UNION RIGHT JOIN`. If "
                         "you're ever asked to do a full outer join in MySQL, "
                         "that's the pattern to reach for.\n\n"
@@ -630,7 +630,7 @@ TOPICS = [
                             "options": [
                                 "Yes, since 5.7",
                                 "Yes, but only with foreign keys",
-                                "No ? you emulate it with UNION",
+                                "No, you emulate it with UNION",
                                 "Yes, but it's deprecated",
                             ],
                             "correct_index": 2,
@@ -660,15 +660,15 @@ TOPICS = [
                         "places where files can be, and moving between them "
                         "requires different commands. Once you hold the mental "
                         "map, Git stops feeling like magic.\n\n"
-                        "1. **Working directory** ? the files as they exist on "
+                        "1. **Working directory**: the files as they exist on "
                         "disk right now. When you edit a file in VS Code, you're "
                         "editing the working directory.\n\n"
-                        "2. **Staging area** (also called *the index*) ? a "
+                        "2. **Staging area** (also called *the index*): a "
                         "holding area where you put changes you intend to "
                         "commit. Files move here via `git add`.\n\n"
-                        "3. **Local repository** ? the committed history "
+                        "3. **Local repository**: the committed history "
                         "stored in `.git/`. Files move here via `git commit`.\n\n"
-                        "4. **Remote** ? a copy of the repository on a server "
+                        "4. **Remote**: a copy of the repository on a server "
                         "(GitHub, GitLab, etc.). Files move to the remote via "
                         "`git push`, and changes from the remote come back via "
                         "`git pull`.\n\n"
@@ -691,7 +691,7 @@ TOPICS = [
                         "    git add <file>\n\n"
                         "Moves changes from the working directory to the "
                         "staging area. `git add .` stages everything in the "
-                        "current directory and below ? convenient but easy to "
+                        "current directory and below. Convenient, but easy to "
                         "accidentally stage files you didn't mean to (like "
                         "`node_modules/` if it's not in `.gitignore`). Prefer "
                         "`git add <specific-file>` until you trust your "
@@ -699,7 +699,7 @@ TOPICS = [
                         "    git commit -m \"message\"\n\n"
                         "Takes everything in the staging area and creates a "
                         "commit in the local repo. The message should say *why* "
-                        "you made the change, not *what* the change was ? the "
+                        "you made the change, not *what* the change was. The "
                         "diff already shows what.\n\n"
                         "    git push\n\n"
                         "Sends your local commits to the remote.\n\n"
@@ -717,7 +717,7 @@ TOPICS = [
                     "body": (
                         "Commits are snapshots, not diffs\n\n"
                         "Every commit records the state of the whole repository "
-                        "at that moment ? not just the changes since the last "
+                        "at that moment, not just the changes since the last "
                         "commit. When you run `git show <hash>`, Git computes "
                         "the diff *for you* by comparing this snapshot to the "
                         "previous one. The underlying storage is snapshots, not "
@@ -726,8 +726,8 @@ TOPICS = [
                         "switching branches and why merging is usually cheap. "
                         "It's also why commits are immutable: you can't edit a "
                         "commit, only create a new one that supersedes it. "
-                        "`git commit --amend` isn't modifying the old commit ? "
-                        "it's creating a new one with a different hash and "
+                        "`git commit --amend` isn't modifying the old commit. "
+                        "It's creating a new one with a different hash and "
                         "moving the branch pointer to it.\n\n"
                         "The practical takeaway: **commit often**. Small commits "
                         "are cheap. Each one is a snapshot you can return to "
@@ -796,7 +796,7 @@ TOPICS = [
                         "*object* (or *instance*) is a specific thing made from "
                         "that blueprint. The class `Dog` describes what every "
                         "dog has (name, breed) and what every dog can do "
-                        "(bark). Each individual dog ? Fido, Rex, Luna ? is an "
+                        "(bark). Each individual dog (Fido, Rex, Luna) is an "
                         "*instance* of `Dog`, with its own specific name and "
                         "breed.\n\n"
                         "    class Dog:\n"
@@ -822,7 +822,7 @@ TOPICS = [
                         "What `self` actually is\n\n"
                         "Here's the confusing bit. When you call "
                         "`fido.bark()`, you don't pass `self` yourself. But "
-                        "`bark` is defined as `def bark(self): ...` ? one "
+                        "`bark` is defined as `def bark(self): ...` with one "
                         "parameter. Where does `self` come from?\n\n"
                         "Python passes it for you. `fido.bark()` is "
                         "essentially shorthand for `Dog.bark(fido)`. The `self` "
@@ -830,7 +830,7 @@ TOPICS = [
                         "the instance the method was called on.\n\n"
                         "This means two things:\n\n"
                         "1. `self` is not a keyword. It's a convention. You "
-                        "could name it `this` and Python wouldn't care ? but "
+                        "could name it `this` and Python wouldn't care. But "
                         "every Python programmer alive expects `self`, so "
                         "don't.\n\n"
                         "2. `self.name = name` inside `__init__` is what "
@@ -854,14 +854,14 @@ TOPICS = [
                         "Why `__init__` exists\n\n"
                         "`__init__` is the *initializer*. Python calls it "
                         "automatically when you write `Dog('Fido', 'Labrador')`. "
-                        "Its job is to set up the instance's initial state ? "
+                        "Its job is to set up the instance's initial state, "
                         "usually by assigning `self.<attribute> = <value>` for "
                         "each attribute the instance needs.\n\n"
                         "You don't *have* to define `__init__`. A class with no "
                         "`__init__` still works; its instances just start "
                         "empty. But most classes that hold state need to set "
                         "that state up, and `__init__` is where that happens.\n\n"
-                        "Note the double underscore prefix and suffix ? "
+                        "Note the double underscore prefix and suffix: "
                         "`__init__`, `__str__`, `__eq__`, `__len__`. These are "
                         "*dunder methods* (double underscore), Python's term "
                         "for hooks that the language calls for you. You rarely "
@@ -934,8 +934,8 @@ TOPICS = [
                         "memory. A **thread** is a sequence of execution "
                         "*within* a process, sharing that process's memory "
                         "with other threads.\n\n"
-                        "That's the whole distinction. Everything else ? cost "
-                        "of creation, isolation, failure modes ? follows from "
+                        "That's the whole distinction. Everything else (cost "
+                        "of creation, isolation, failure modes) follows from "
                         "the memory sharing.\n\n"
                         "When you launch `python myscript.py`, the operating "
                         "system creates a process: a chunk of virtual memory, "
@@ -968,7 +968,7 @@ TOPICS = [
                         "- **Processes** are isolated. If one crashes (segfault, "
                         "bad pointer, uncaught signal), the OS kills only that "
                         "process. Other processes are unaffected. This is why "
-                        "browsers use one process per tab ? a tab crash doesn't "
+                        "browsers use one process per tab: a tab crash doesn't "
                         "take down the browser.\n\n"
                         "- **Threads** are not isolated. If one thread writes to "
                         "memory another thread is reading, both are affected. A "
@@ -1003,8 +1003,8 @@ TOPICS = [
                         "- Thread startup cost matters. Spawning a thread is "
                         "cheap enough that you can do it per request.\n\n"
                         "The practical guidance for Python specifically:\n\n"
-                        "- I/O-bound ? `threading` or `asyncio`\n"
-                        "- CPU-bound ? `multiprocessing` or `concurrent.futures."
+                        "- I/O-bound: `threading` or `asyncio`\n"
+                        "- CPU-bound: `multiprocessing` or `concurrent.futures."
                         "ProcessPoolExecutor`\n\n"
                         "In languages without a GIL (Java, Go, Rust), threads "
                         "do CPU work in parallel too, so the distinction "
@@ -1042,7 +1042,7 @@ TOPICS = [
                                 "`threading`",
                                 "`multiprocessing`",
                                 "`asyncio`",
-                                "None ? Python can't do it",
+                                "None, Python can't do it",
                             ],
                             "correct_index": 1,
                         },
@@ -1055,7 +1055,7 @@ TOPICS = [
         "subject": "Computer Networks",
         "title": "DNS: How a Domain Name Becomes an IP",
         "description": (
-            "You type `google.com` and your browser loads a page ? but the "
+            "You type `google.com` and your browser loads a page, but the "
             "internet only routes IP addresses. This topic walks through the "
             "DNS resolution chain and why caching is the whole performance "
             "story."
@@ -1080,12 +1080,12 @@ TOPICS = [
                         "namespace.\n\n"
                         "The tree looks like this:\n\n"
                         "    . (root)\n"
-                        "    ??? com\n"
-                        "    ?   ??? google.com\n"
-                        "    ?       ??? www.google.com\n"
-                        "    ?       ??? mail.google.com\n"
-                        "    ??? edu\n"
-                        "        ??? basu.edu.ph\n\n"
+                        "    +-- com\n"
+                        "    |   +-- google.com\n"
+                        "    |       +-- www.google.com\n"
+                        "    |       +-- mail.google.com\n"
+                        "    +-- edu\n"
+                        "        +-- basu.edu.ph\n\n"
                         "Each dot in `www.google.com` is a level in the tree. "
                         "Resolution starts at the root and walks down."
                     )
@@ -1118,7 +1118,7 @@ TOPICS = [
                         "6. **The resolver** caches the answer for the TTL "
                         "(time-to-live) duration, then returns it to your OS, "
                         "which also caches it, then returns it to your browser.\n\n"
-                        "Six steps sounds slow. It usually takes ~20?100ms the "
+                        "Six steps sounds slow. It usually takes ~20-100ms the "
                         "first time, and 0ms on subsequent requests thanks to "
                         "caching at every level."
                     )
@@ -1130,12 +1130,12 @@ TOPICS = [
                     "body": (
                         "Caching is the whole performance story\n\n"
                         "Without caching, every single HTTP request would "
-                        "trigger a full DNS resolution ? six round trips "
+                        "trigger a full DNS resolution: six round trips "
                         "across the internet before the browser even opens a "
                         "TCP connection. Every page load would be noticeably "
                         "slower.\n\n"
                         "Caching happens at many levels:\n\n"
-                        "- **Browser cache**: usually 1?2 minutes\n"
+                        "- **Browser cache**: usually 1-2 minutes\n"
                         "- **OS cache**: minutes to hours\n"
                         "- **Recursive resolver cache**: governed by the "
                         "record's TTL, often 5 minutes to 24 hours\n"

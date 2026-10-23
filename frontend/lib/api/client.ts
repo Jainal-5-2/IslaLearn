@@ -1,4 +1,23 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL!;
+/**
+ * API client for the IslaLearn DRF backend.
+ *
+ * Responsibilities:
+ *   - Read and write JWT tokens from localStorage.
+ *   - Attach the access token to every request.
+ *   - On 401, transparently refresh the access token once and retry.
+ *   - Surface non-2xx responses as ApiError with the server's message.
+ *   - Preserve the response body on ApiError so callers can inspect
+ *     field-level errors (e.g. `{ age_confirmed: [...] }`).
+ */
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_URL) {
+  throw new Error(
+    "NEXT_PUBLIC_API_URL is not set. Copy .env.example to .env.local " +
+      "and fill it in, or pass it to `next dev` and `next build`."
+  );
+}
 
 // ---------- Token storage ----------
 export function setTokens(access: string, refresh: string) {
@@ -66,7 +85,7 @@ async function refreshAccessToken(): Promise<boolean> {
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
-  _isRetry = false
+  isRetry = false
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -83,7 +102,7 @@ export async function apiFetch<T>(
     headers,
   });
 
-  if (res.status === 401 && !_isRetry) {
+  if (res.status === 401 && !isRetry) {
     if (!isRefreshing) {
       isRefreshing = true;
       refreshPromise = refreshAccessToken().finally(() => {
@@ -91,7 +110,11 @@ export async function apiFetch<T>(
         refreshPromise = null;
       });
     }
-    const success = await (refreshPromise ?? Promise.resolve(false));
+
+    // Wait for whichever refresh is in flight (this one or another
+    // caller's), then retry once if it succeeded.
+    const pending = refreshPromise;
+    const success = pending ? await pending : false;
 
     if (success) {
       return apiFetch<T>(path, options, true);
@@ -111,7 +134,7 @@ export async function apiFetch<T>(
       body = await res.json();
       message = firstErrorString(body) ?? message;
     } catch {
-      /* non-JSON error */
+      // Non-JSON error body. Keep the status-based message.
     }
     throw new ApiError(message, res.status, body);
   }
@@ -121,6 +144,19 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+/**
+ * Walk an arbitrary JSON error body and return the first string found.
+ *
+ * DRF produces several shapes:
+ *   { "detail": "msg" }
+ *   { "field": ["msg"] }
+ *   { "non_field_errors": ["msg"] }
+ *   ["msg"]
+ *   "msg"
+ *
+ * This function returns the first leaf string in any of those shapes,
+ * which is what we want for a single-line toast or inline error.
+ */
 function firstErrorString(body: unknown): string | null {
   if (typeof body === "string") return body;
   if (Array.isArray(body)) {

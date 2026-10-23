@@ -20,19 +20,30 @@ class TopicPageSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return obj.order > obj.topic.free_page_count
-            
+
         if request.user == obj.topic.created_by:
-            return False  
-            
+            return False
+
         return obj.order > obj.topic.free_page_count
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # If the page is locked, completely strip the content from the response
+        # If the page is locked, strip the content from the response
         # so it cannot be read via the Network tab.
         if data.get("is_locked"):
             data["content"] = {}
         return data
+
+
+class TopicPageWriteSerializer(serializers.ModelSerializer):
+    """
+    Write-only serializer for creating and updating pages.
+    No is_locked field: it applies only to read responses.
+    """
+
+    class Meta:
+        model = TopicPage
+        fields = ["order", "page_type", "content"]
 
 
 class TopicListSerializer(serializers.ModelSerializer):
@@ -65,9 +76,3 @@ class TopicCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Topic
         fields = ["subject", "title", "description", "is_published", "free_page_count"]
-
-
-class TopicPageCreateUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TopicPage
-        fields = ["order", "page_type", "content"]

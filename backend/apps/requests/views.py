@@ -1,6 +1,6 @@
 from django.db import transaction
 from rest_framework import generics, permissions, status
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -19,9 +19,9 @@ class RequestListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        queryset = Request.objects.select_related(
-            "tutee", "subject"
-        ).prefetch_related("applications")
+        queryset = Request.objects.select_related("tutee", "subject").prefetch_related(
+            "applications"
+        )
 
         status_filter = self.request.query_params.get("status", "open")
         if status_filter:
@@ -58,9 +58,9 @@ class RequestListCreateView(generics.ListCreateAPIView):
 
 
 class RequestDetailView(generics.RetrieveUpdateAPIView):
-    queryset = Request.objects.select_related(
-        "tutee", "subject"
-    ).prefetch_related("applications__tutor")
+    queryset = Request.objects.select_related("tutee", "subject").prefetch_related(
+        "applications__tutor"
+    )
     permission_classes = [permissions.IsAuthenticated]
     http_method_names = ["get", "patch", "head", "options"]
 
@@ -73,9 +73,7 @@ class RequestDetailView(generics.RetrieveUpdateAPIView):
         super().check_object_permissions(request, obj)
         if request.method == "PATCH":
             if obj.tutee != request.user:
-                raise PermissionDenied(
-                    "Only the request owner can edit this request."
-                )
+                raise PermissionDenied("Only the request owner can edit this request.")
             if obj.status != "open":
                 raise ValidationError(
                     "This request is closed and can no longer be edited."
@@ -92,14 +90,11 @@ class RequestDetailView(generics.RetrieveUpdateAPIView):
             except (TypeError, ValueError):
                 raise ValidationError({"subject": "Invalid subject id."})
 
-            if (
-                new_subject_id != instance.subject_id
-                and instance.applications.exists()
-            ):
+            if new_subject_id != instance.subject_id and instance.applications.exists():
                 raise ValidationError(
                     {
                         "subject": (
-                            "Subject can no longer be changed — tutors have "
+                            "Subject can no longer be changed. Tutors have "
                             "already applied. Close and repost to change it."
                         )
                     }
@@ -130,33 +125,34 @@ class RequestCloseView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, pk):
-        try:
-            req = Request.objects.get(pk=pk)
-        except Request.DoesNotExist:
-            from rest_framework.exceptions import NotFound
-
-            raise NotFound("Request not found.")
-
-        if req.tutee != request.user:
-            raise PermissionDenied("Only the request owner can close it.")
-        if req.status != "open":
-            raise ValidationError("This request is already closed.")
-        if req.applications.filter(status="accepted").exists():
-            # Defensive: shouldn't happen since accepting already closes the
-            # request, but guard against manual state drift.
-            raise ValidationError(
-                "This request already has an accepted tutor and is closed."
-            )
-
         with transaction.atomic():
+            try:
+                req = (
+                    Request.objects.select_for_update()
+                    .select_related("tutee", "subject")
+                    .prefetch_related("applications__tutor")
+                    .get(pk=pk)
+                )
+            except Request.DoesNotExist:
+                raise NotFound("Request not found.")
+
+            if req.tutee != request.user:
+                raise PermissionDenied("Only the request owner can close it.")
+            if req.status != "open":
+                raise ValidationError("This request is already closed.")
+            if req.applications.filter(status="accepted").exists():
+                # Defensive guard: normally accepting closes the request,
+                # but protect against manual state drift.
+                raise ValidationError(
+                    "This request already has an accepted tutor and is closed."
+                )
+
             req.status = "closed"
             req.save(update_fields=["status"])
             req.applications.filter(status="pending").update(status="rejected")
 
         # Return the full detail shape so the client can re-sync in one call.
-        serializer = RequestDetailSerializer(
-            req, context={"request": request}
-        )
+        serializer = RequestDetailSerializer(req, context={"request": request})
         return Response(serializer.data)
 
 
@@ -191,8 +187,6 @@ class RequestApplyView(generics.CreateAPIView):
         try:
             return Request.objects.get(id=self.kwargs["pk"])
         except Request.DoesNotExist:
-            from rest_framework.exceptions import NotFound
-
             raise NotFound("Request not found.")
 
 
@@ -203,28 +197,39 @@ class ApplicationDecisionView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
     def update(self, request, *args, **kwargs):
-        application = self.get_object()
-        req = application.request
-
-        if req.tutee != request.user:
-            raise PermissionDenied("Only the request owner can decide.")
-
         new_status = request.data.get("status")
         if new_status not in ("accepted", "rejected"):
-            raise ValidationError(
-                {"status": "Must be 'accepted' or 'rejected'."}
-            )
-        if application.status != "pending":
-            raise ValidationError("This application has already been decided.")
+            raise ValidationError({"status": "Must be 'accepted' or 'rejected'."})
 
         with transaction.atomic():
+            # Lock the application row so two concurrent decisions cannot
+            # both pass the "pending" check.
+            try:
+                application = (
+                    Application.objects.select_for_update()
+                    .select_related("request")
+                    .get(pk=kwargs["pk"])
+                )
+            except Application.DoesNotExist:
+                raise NotFound("Application not found.")
+
+            req = application.request
+
+            if req.tutee != request.user:
+                raise PermissionDenied("Only the request owner can decide.")
+
+            if application.status != "pending":
+                raise ValidationError("This application has already been decided.")
+
             application.status = new_status
             application.save(update_fields=["status"])
 
             if new_status == "accepted":
-                Application.objects.filter(
-                    request=req, status="pending"
-                ).exclude(pk=application.pk).update(status="rejected")
+                # Reject any remaining pending applications and close
+                # the request, all under the same lock.
+                Application.objects.filter(request=req, status="pending").exclude(
+                    pk=application.pk
+                ).update(status="rejected")
                 req.status = "closed"
                 req.save(update_fields=["status"])
 

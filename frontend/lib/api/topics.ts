@@ -1,11 +1,13 @@
 import { apiFetch } from "./client";
+import { normalizePaginated, type Paginated } from "./pagination";
 import type { Topic } from "./types";
 
 export async function getTopics(
   subjectId?: number
-): Promise<{ results: Topic[] }> {
+): Promise<Paginated<Topic>> {
   const query = subjectId ? `?subject=${subjectId}` : "";
-  return apiFetch<{ results: Topic[] }>(`/topics/${query}`);
+  const data = await apiFetch<Paginated<Topic> | Topic[]>(`/topics/${query}`);
+  return normalizePaginated(data);
 }
 
 export async function getTopic(id: number): Promise<Topic> {

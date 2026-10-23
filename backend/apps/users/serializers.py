@@ -7,7 +7,9 @@ class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
     age_confirmed = serializers.BooleanField(write_only=True)
 
-    GENERIC_ERROR = (
+    # Shown only when a username collision is detected. Keeping this
+    # generic avoids leaking which usernames are taken.
+    USERNAME_TAKEN_MESSAGE = (
         "We couldn't create your account. Try a different username, "
         "or log in if you already have one."
     )
@@ -27,12 +29,22 @@ class RegisterSerializer(serializers.ModelSerializer):
         try:
             return super().to_internal_value(data)
         except serializers.ValidationError as exc:
-            if (
-                isinstance(exc.detail, dict)
-                and set(exc.detail.keys()) == {"age_confirmed"}
-            ):
-                raise
-            raise serializers.ValidationError({"detail": self.GENERIC_ERROR})
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+
+            # Preserve field-level errors the client can render inline.
+            # Everything else collapses to a generic message so usernames
+            # and other identifiers can't be enumerated.
+            passthrough = {}
+            for field in ("age_confirmed", "password", "email"):
+                if field in detail:
+                    passthrough[field] = detail[field]
+
+            if passthrough:
+                raise serializers.ValidationError(passthrough)
+
+            raise serializers.ValidationError(
+                {"detail": self.USERNAME_TAKEN_MESSAGE}
+            )
 
     def create(self, validated_data):
         validated_data.pop("age_confirmed")

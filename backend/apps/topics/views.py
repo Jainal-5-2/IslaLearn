@@ -1,6 +1,6 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 
 from .models import Subject, Topic, TopicPage
 from .serializers import (
@@ -8,7 +8,8 @@ from .serializers import (
     TopicListSerializer,
     TopicDetailSerializer,
     TopicCreateUpdateSerializer,
-    TopicPageCreateUpdateSerializer,
+    TopicPageSerializer,
+    TopicPageWriteSerializer,
 )
 
 
@@ -48,12 +49,13 @@ class TopicListCreateView(generics.ListCreateAPIView):
         return TopicListSerializer
 
     def create(self, request, *args, **kwargs):
-        # Validate + save with the write serializer
+        # Validate and save with the write serializer
         write_serializer = self.get_serializer(data=request.data)
         write_serializer.is_valid(raise_exception=True)
         topic = write_serializer.save(created_by=request.user)
 
-        # Return the full detail representation (includes id, subject, created_by, pages, etc.)
+        # Return the full detail representation (includes id, subject,
+        # created_by, pages, etc.)
         read_serializer = TopicDetailSerializer(
             topic, context=self.get_serializer_context()
         )
@@ -76,7 +78,7 @@ class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
-        # Only the creator can edit or delete
+        # Only the creator can edit or delete.
         if request.method in ["PUT", "PATCH", "DELETE"]:
             if obj.created_by != request.user:
                 raise PermissionDenied(
@@ -85,22 +87,23 @@ class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class TopicPageListCreateView(generics.ListCreateAPIView):
-    serializer_class = TopicPageCreateUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_topic(self):
-        # Helper to ensure the topic exists and belongs to the user for POST
         topic_id = self.kwargs.get("topic_id")
         try:
             topic = Topic.objects.get(id=topic_id)
         except Topic.DoesNotExist:
-            from rest_framework.exceptions import NotFound
-
             raise NotFound("Topic not found.")
 
         if self.request.method == "POST" and topic.created_by != self.request.user:
             raise PermissionDenied("You can only add pages to your own topics.")
         return topic
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return TopicPageWriteSerializer
+        return TopicPageSerializer
 
     def get_queryset(self):
         topic = self.get_topic()
@@ -119,15 +122,19 @@ class TopicPageListCreateView(generics.ListCreateAPIView):
 
 
 class TopicPageDetailView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = TopicPageCreateUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method in ["PUT", "PATCH"]:
+            return TopicPageWriteSerializer
+        return TopicPageSerializer
 
     def get_queryset(self):
         return TopicPage.objects.filter(topic_id=self.kwargs.get("topic_id"))
 
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
-        # Only the topic creator can edit/delete pages
+        # Only the topic creator can edit or delete pages.
         if request.method in ["PUT", "PATCH", "DELETE"]:
             if obj.topic.created_by != request.user:
                 raise PermissionDenied(

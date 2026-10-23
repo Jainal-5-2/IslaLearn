@@ -1,19 +1,21 @@
 import { apiFetch } from "./client";
+import { normalizePaginated, type Paginated } from "./pagination";
 import type { Application, TutoringRequest } from "./types";
 
 export async function getRequests(params?: {
   subject?: number;
   mine?: boolean;
   status?: "open" | "closed";
-}): Promise<{ results: TutoringRequest[] }> {
+}): Promise<Paginated<TutoringRequest>> {
   const search = new URLSearchParams();
   if (params?.subject) search.set("subject", String(params.subject));
   if (params?.mine) search.set("mine", "true");
   if (params?.status) search.set("status", params.status);
   const qs = search.toString();
-  return apiFetch<{ results: TutoringRequest[] }>(
+  const data = await apiFetch<Paginated<TutoringRequest> | TutoringRequest[]>(
     `/requests/${qs ? `?${qs}` : ""}`
   );
+  return normalizePaginated(data);
 }
 
 export async function getRequest(id: number): Promise<TutoringRequest> {
