@@ -22,16 +22,10 @@ class SubjectListView(generics.ListAPIView):
     queryset = Subject.objects.all()
     serializer_class = SubjectSerializer
     permission_classes = [permissions.AllowAny]
-    pagination_class = None  # Subjects are a small list, return all
+    pagination_class = None
 
 
 def _progress_map_for(user, topics):
-    """
-    Build a {topic_id: TopicProgress} dict for the given user and topics.
-
-    Returns an empty dict for anonymous users. Called by views that
-    serialize many topics at once, to avoid one query per card.
-    """
     if user is None or not user.is_authenticated:
         return {}
     topic_ids = [t.id for t in topics]
@@ -197,22 +191,21 @@ class TopicProgressView(APIView):
     """
     POST /api/topics/{id}/progress/
 
-    Upserts the requesting user's progress on a topic.
-
     Request body:
         { "last_page_index": int, "reset": bool = false }
 
     - Clamps last_page_index into the topic's page range.
-    - When reset=false (default), last_page_index is monotonic: the
-      stored value is max(stored, incoming). Backward navigation never
-      lowers the high-water mark.
-    - When reset=true, last_page_index is assigned unconditionally and
-      is_completed/completed_at are reset accordingly. Used by "Start
-      from beginning".
-    - is_completed flips True once last_page_index reaches the last
-      page, and completed_at records the timestamp of that flip.
+    - When reset=false (default):
+        * last_page_index is monotonic (max of stored and incoming).
+        * last_page_index may not jump more than one page beyond the
+          currently stored value. This prevents a client from skipping
+          pages via the API. A user at page 1 cannot POST page 5; they
+          must POST page 2 first.
+    - When reset=true, last_page_index is assigned unconditionally.
+    - is_completed flips True once last_page_index reaches the last page,
+      and completed_at records the timestamp of that flip.
     - Rejects calls from the topic's own creator.
-    - Rejects calls on topics the user cannot see (unpublished, not owner).
+    - Rejects calls on unpublished topics.
     - Does not touch is_unlocked. Paywall and progress are separate.
     """
 
@@ -250,6 +243,14 @@ class TopicProgressView(APIView):
         if reset:
             progress.last_page_index = incoming_index
         else:
+            if incoming_index > progress.last_page_index + 1:
+                raise ValidationError(
+                    {
+                        "last_page_index": (
+                            "Progress cannot jump more than one page at a time."
+                        )
+                    }
+                )
             progress.last_page_index = max(progress.last_page_index, incoming_index)
 
         was_completed = progress.is_completed
@@ -278,17 +279,9 @@ class TopicUnlockView(APIView):
     """
     POST /api/topics/{id}/unlock/
 
-    Lifts the paywall for the requesting user on this topic.
-
-    Sets TopicProgress.is_unlocked to True. Idempotent: calling twice
-    returns 200 both times. Does not touch last_page_index, is_completed,
-    or completed_at; paywall and progress are independent.
-
-    Rejects calls from the topic's own creator (they are never paywalled
-    on their own topic). Rejects calls on drafts. Creates a TopicProgress
-    row if one does not exist yet, so a hypothetical buy button on the
-    detail page (before the user has opened the reader) can call this
-    endpoint without a separate "start progress" step.
+    Sets TopicProgress.is_unlocked to True for the requesting user.
+    Idempotent. Rejects the topic's creator and unpublished topics.
+    Does not touch last_page_index, is_completed, or completed_at.
     """
 
     permission_classes = [permissions.IsAuthenticated]

@@ -17,8 +17,9 @@ class TopicProgressTests(APITestCase):
       - Anonymous users get 401.
       - last_page_index is clamped into the topic's page range.
       - last_page_index is monotonic: backward navigation never lowers it.
-      - reset=true lowers last_page_index unconditionally and clears
-        is_completed / completed_at.
+      - last_page_index may not jump more than one page at a time when
+        reset=false. reset=true bypasses the jump guard.
+      - reset=true clears is_completed / completed_at.
       - is_completed flips True once last_page_index reaches the last page.
       - completed_at is set on the False -> True transition and is not
         cleared by monotonic writes afterward.
@@ -54,6 +55,14 @@ class TopicProgressTests(APITestCase):
 
     def _login(self, user):
         self.client.force_authenticate(user=user)
+
+    def _walk_up_to(self, index):
+        """Write progress 0..index one page at a time, satistying the guard."""
+        for i in range(index + 1):
+            response = self.client.post(self.url, {"last_page_index": i})
+            assert response.status_code == status.HTTP_200_OK, (
+                f"step {i} failed: {response.data}"
+            )
 
     def test_anonymous_is_rejected(self):
         response = self.client.post(self.url, {"last_page_index": 0})
@@ -95,18 +104,23 @@ class TopicProgressTests(APITestCase):
 
     def test_repeated_calls_update_same_row(self):
         self._login(self.reader)
+        self.client.post(self.url, {"last_page_index": 0})
         self.client.post(self.url, {"last_page_index": 1})
-        self.client.post(self.url, {"last_page_index": 3})
+        self.client.post(self.url, {"last_page_index": 2})
         self.assertEqual(
             TopicProgress.objects.filter(user=self.reader, topic=self.topic).count(),
             1,
         )
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
-        self.assertEqual(progress.last_page_index, 3)
+        self.assertEqual(progress.last_page_index, 2)
 
     def test_out_of_range_last_page_index_is_clamped(self):
         self._login(self.reader)
-        response = self.client.post(self.url, {"last_page_index": 999})
+        # reset=true bypasses the jump guard, so the clamp can be tested
+        # on its own.
+        response = self.client.post(
+            self.url, {"last_page_index": 999, "reset": True}
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
         self.assertEqual(progress.last_page_index, 4)
@@ -114,15 +128,16 @@ class TopicProgressTests(APITestCase):
 
     def test_reaching_last_page_sets_completed_at(self):
         self._login(self.reader)
-        response = self.client.post(self.url, {"last_page_index": 4})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self._walk_up_to(4)
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertEqual(progress.last_page_index, 4)
         self.assertIsNotNone(progress.completed_at)
-        self.assertTrue(response.data["is_completed"])
+        self.assertTrue(progress.is_completed)
 
     def test_backward_navigation_does_not_lower_last_page_index(self):
         self._login(self.reader)
-        self.client.post(self.url, {"last_page_index": 3})
+        self._walk_up_to(3)
+        # Navigate backward to page 1. Monotonic: stays at 3.
         response = self.client.post(self.url, {"last_page_index": 1})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["last_page_index"], 3)
@@ -131,12 +146,14 @@ class TopicProgressTests(APITestCase):
 
     def test_completed_at_survives_monotonic_write(self):
         self._login(self.reader)
-        self.client.post(self.url, {"last_page_index": 4})
+        self._walk_up_to(4)
         first_completed_at = TopicProgress.objects.get(
             user=self.reader, topic=self.topic
         ).completed_at
         self.assertIsNotNone(first_completed_at)
 
+        # A lower write is clamped up to the high-water mark, so completion
+        # cannot be lost by navigating backward.
         response = self.client.post(self.url, {"last_page_index": 1})
         self.assertEqual(response.data["last_page_index"], 4)
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
@@ -146,7 +163,7 @@ class TopicProgressTests(APITestCase):
 
     def test_reset_lowers_last_page_index_and_clears_completion(self):
         self._login(self.reader)
-        self.client.post(self.url, {"last_page_index": 4})
+        self._walk_up_to(4)
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
         self.assertTrue(progress.is_completed)
         self.assertIsNotNone(progress.completed_at)
@@ -166,9 +183,38 @@ class TopicProgressTests(APITestCase):
 
     def test_progress_does_not_change_is_unlocked(self):
         self._login(self.reader)
-        self.client.post(self.url, {"last_page_index": 3})
+        self._walk_up_to(3)
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
         self.assertFalse(progress.is_unlocked)
+
+    # ---------- Jump guard ----------
+
+    def test_cannot_jump_more_than_one_page(self):
+        self._login(self.reader)
+        self.client.post(self.url, {"last_page_index": 0})
+        # Attempt to skip from page 1 (index 0) to page 5 (index 4).
+        response = self.client.post(self.url, {"last_page_index": 4})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertEqual(progress.last_page_index, 0)
+
+    def test_sequential_writes_are_allowed(self):
+        self._login(self.reader)
+        for index in range(5):
+            response = self.client.post(self.url, {"last_page_index": index})
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertEqual(progress.last_page_index, 4)
+
+    def test_reset_can_jump_anywhere(self):
+        self._login(self.reader)
+        self._walk_up_to(4)
+        response = self.client.post(
+            self.url, {"last_page_index": 0, "reset": True}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertEqual(progress.last_page_index, 0)
 
 
 class TopicDetailProgressTests(APITestCase):
@@ -310,8 +356,6 @@ class TopicPageLockTests(APITestCase):
         self.assertFalse(response.data["is_locked"])
         self.assertEqual(response.data["content"], {"body": "Secret 3"})
 
-    # ---------- Paywall rule ----------
-
     def test_progress_without_unlock_still_locks_past_free_count(self):
         # A row exists (the user has read to page 2), but they have not
         # unlocked. is_locked must still be True past free_page_count.
@@ -358,13 +402,12 @@ class TopicUnlockTests(APITestCase):
 
     Invariants:
       - Anonymous users get 401.
-      - Topic owner gets 400 (never paywalled on their own topic).
+      - Topic owner gets 400.
       - Unpublished topic gets 403.
       - Unknown topic gets 404.
       - Unlock sets is_unlocked=True and creates the row if missing.
-      - Unlock is idempotent: second call returns 200, row unchanged.
+      - Unlock is idempotent.
       - Unlock does not touch last_page_index, is_completed, completed_at.
-      - Unlock does not change last_page_index on an existing row.
     """
 
     def setUp(self):
@@ -412,9 +455,7 @@ class TopicUnlockTests(APITestCase):
 
     def test_unknown_topic_is_not_found(self):
         self._login(self.reader)
-        response = self.client.post(
-            reverse("topic-unlock", args=[999999])
-        )
+        response = self.client.post(reverse("topic-unlock", args=[999999]))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_unlock_creates_row_if_missing(self):
