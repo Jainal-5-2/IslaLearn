@@ -54,6 +54,9 @@ function TopicReaderPage() {
   // Resume banner: shown only if we auto-resumed to a page > 0.
   const [showResumeBanner, setShowResumeBanner] = useState(false);
 
+  // Confirm dialog for "Start from beginning".
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   // Furthest page the user has reached, from the server. -1 means
   // "no progress row". Updated whenever recordProgress resolves.
   const [progressLastPageIndex, setProgressLastPageIndex] = useState(-1);
@@ -147,6 +150,24 @@ function TopicReaderPage() {
     };
   }, []);
 
+  function requestStartFromBeginning() {
+    setShowResetConfirm(true);
+  }
+
+  function confirmStartFromBeginning() {
+    setShowResetConfirm(false);
+    setActivePageIndex(0);
+    setProgressLastPageIndex(0);
+    setShowResumeBanner(false);
+    if (topic && isOwnerRef.current === false) {
+      recordProgress(topic.id, 0, { reset: true })
+        .then((updated) => {
+          setProgressLastPageIndex(updated.last_page_index);
+        })
+        .catch(() => {});
+    }
+  }
+
   if (loading) {
     return <PageSkeleton variant="reader" />;
   }
@@ -166,11 +187,7 @@ function TopicReaderPage() {
   const pages = topic.pages || [];
   const activePage = pages[activePageIndex];
 
-  // Highest sidebar index the user may navigate to.
   const unlockedUpTo = Math.max(activePageIndex, progressLastPageIndex);
-
-  // Pages strictly before the furthest reached page are considered
-  // complete. The furthest page itself is "current", not "completed".
   const completedUpTo = Math.max(activePageIndex, progressLastPageIndex) - 1;
 
   const handleNext = () => {
@@ -192,19 +209,6 @@ function TopicReaderPage() {
     setActivePageIndex(index);
     setIsSidebarOpen(false);
     if (showResumeBanner) setShowResumeBanner(false);
-  };
-
-  const handleStartFromBeginning = () => {
-    setActivePageIndex(0);
-    setProgressLastPageIndex(0);
-    setShowResumeBanner(false);
-    if (topic && isOwnerRef.current === false) {
-      recordProgress(topic.id, 0, { reset: true })
-        .then((updated) => {
-          setProgressLastPageIndex(updated.last_page_index);
-        })
-        .catch(() => { });
-    }
   };
 
   return (
@@ -368,7 +372,7 @@ function TopicReaderPage() {
                   Resumed to page {activePageIndex + 1} of {pages.length}.
                 </span>
                 <button
-                  onClick={handleStartFromBeginning}
+                  onClick={requestStartFromBeginning}
                   className="inline-flex items-center gap-1 text-accent hover:underline font-medium shrink-0"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
@@ -448,6 +452,13 @@ function TopicReaderPage() {
           </div>
         </section>
       </div>
+
+      <ResetProgressDialog
+        open={showResetConfirm}
+        onCancel={() => setShowResetConfirm(false)}
+        onConfirm={confirmStartFromBeginning}
+        totalPages={pages.length}
+      />
     </div>
   );
 }
@@ -475,6 +486,101 @@ function LockGate({ page }: { page: TopicPage }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function ResetProgressDialog({
+  open,
+  onCancel,
+  onConfirm,
+  totalPages,
+}: {
+  open: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  totalPages: number;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // Focus the safe option when the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    cancelRef.current?.focus();
+  }, [open]);
+
+  // Close on Escape.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onCancel]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          onClick={onCancel}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-progress-title"
+          aria-describedby="reset-progress-description"
+        >
+          <motion.div
+            className="w-full max-w-md bg-card text-card-foreground border border-border rounded-2xl shadow-lg p-6"
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ duration: 0.15 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 text-red-600 flex items-center justify-center shrink-0">
+                <RotateCcw className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2
+                  id="reset-progress-title"
+                  className="text-lg font-semibold text-foreground"
+                >
+                  Start from the beginning?
+                </h2>
+                <p
+                  id="reset-progress-description"
+                  className="text-sm text-muted-foreground mt-1"
+                >
+                  Your reading progress on this topic will be reset to page 1
+                  of {totalPages}. This cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
+              <button
+                ref={cancelRef}
+                onClick={onCancel}
+                className="h-10 px-4 rounded-md border border-border hover:bg-muted font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onConfirm}
+                className="h-10 px-4 rounded-md bg-red-600 text-white font-medium hover:bg-red-700 transition-colors"
+              >
+                Reset progress
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
