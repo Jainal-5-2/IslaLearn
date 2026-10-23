@@ -270,7 +270,7 @@ Reports
 - Server-side storage (syncs across devices).
 - No reset button in v1.
 
-**Phase 3 — Demand Flow (Requests)** `[NEXT]`
+**Phase 3 — Demand Flow (Requests)** `[DONE]`
 9. Build `Request` + `Application` models and API.
 10. Build request browse/post pages (tutee) and apply flow (tutor).
 11. Build accept/reject flow.
