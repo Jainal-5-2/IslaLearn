@@ -16,8 +16,12 @@ class TopicProgressTests(APITestCase):
       - The topic owner cannot write progress on their own topic.
       - Anonymous users get 401.
       - last_page_index is clamped into the topic's page range.
-      - completed_at is set once last_page_index reaches the last page,
-        and is not cleared on subsequent calls.
+      - last_page_index is monotonic: backward navigation never lowers it.
+      - reset=true lowers last_page_index unconditionally and clears
+        is_completed / completed_at.
+      - is_completed flips True once last_page_index reaches the last page.
+      - completed_at is set on the False -> True transition and is not
+        cleared by monotonic writes afterward.
       - Repeated calls update the same row, never create a second one.
     """
 
@@ -114,7 +118,17 @@ class TopicProgressTests(APITestCase):
         self.assertIsNotNone(progress.completed_at)
         self.assertTrue(response.data["is_completed"])
 
-    def test_completed_at_is_not_cleared_on_regression(self):
+    def test_backward_navigation_does_not_lower_last_page_index(self):
+        self._login(self.reader)
+        self.client.post(self.url, {"last_page_index": 3})
+        # Navigate backward to page 1. Monotonic: stays at 3.
+        response = self.client.post(self.url, {"last_page_index": 1})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["last_page_index"], 3)
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertEqual(progress.last_page_index, 3)
+
+    def test_completed_at_survives_monotonic_write(self):
         self._login(self.reader)
         self.client.post(self.url, {"last_page_index": 4})
         first_completed_at = TopicProgress.objects.get(
@@ -122,10 +136,34 @@ class TopicProgressTests(APITestCase):
         ).completed_at
         self.assertIsNotNone(first_completed_at)
 
-        self.client.post(self.url, {"last_page_index": 1})
+        # A lower write is clamped up to the high-water mark, so completion
+        # cannot be lost by navigating backward.
+        response = self.client.post(self.url, {"last_page_index": 1})
+        self.assertEqual(response.data["last_page_index"], 4)
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
-        self.assertEqual(progress.last_page_index, 1)
+        self.assertEqual(progress.last_page_index, 4)
+        self.assertTrue(progress.is_completed)
         self.assertEqual(progress.completed_at, first_completed_at)
+
+    def test_reset_lowers_last_page_index_and_clears_completion(self):
+        self._login(self.reader)
+        self.client.post(self.url, {"last_page_index": 4})
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertTrue(progress.is_completed)
+        self.assertIsNotNone(progress.completed_at)
+
+        response = self.client.post(
+            self.url, {"last_page_index": 0, "reset": True}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["last_page_index"], 0)
+        self.assertFalse(response.data["is_completed"])
+        self.assertIsNone(response.data["completed_at"])
+
+        progress.refresh_from_db()
+        self.assertEqual(progress.last_page_index, 0)
+        self.assertFalse(progress.is_completed)
+        self.assertIsNone(progress.completed_at)
 
 
 class TopicDetailProgressTests(APITestCase):
@@ -247,7 +285,7 @@ class TopicPageLockTests(APITestCase):
         for page in response.data["results"]:
             self.assertFalse(page["is_locked"])
             self.assertTrue(page["content"])  # non-empty
-            
+
     def test_detail_endpoint_strips_locked_content_for_reader(self):
         self.client.force_authenticate(user=self.reader)
         response = self.client.get(self.detail_url)
@@ -261,33 +299,3 @@ class TopicPageLockTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["is_locked"])
         self.assertEqual(response.data["content"], {"body": "Secret 3"})
-        
-    def test_backward_navigation_does_not_lower_last_page_index(self):
-        self._login(self.reader)
-        self.client.post(self.url, {"last_page_index": 3})
-        # Navigate backward to page 1. Monotonic: stays at 3.
-        response = self.client.post(self.url, {"last_page_index": 1})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["last_page_index"], 3)
-        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
-        self.assertEqual(progress.last_page_index, 3)
-
-    def test_reset_lowers_last_page_index_and_clears_completion(self):
-        self._login(self.reader)
-        self.client.post(self.url, {"last_page_index": 4})
-        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
-        self.assertTrue(progress.is_completed)
-        self.assertIsNotNone(progress.completed_at)
-
-        response = self.client.post(
-            self.url, {"last_page_index": 0, "reset": True}
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["last_page_index"], 0)
-        self.assertFalse(response.data["is_completed"])
-        self.assertIsNone(response.data["completed_at"])
-
-        progress.refresh_from_db()
-        self.assertEqual(progress.last_page_index, 0)
-        self.assertFalse(progress.is_completed)
-        self.assertIsNone(progress.completed_at)
