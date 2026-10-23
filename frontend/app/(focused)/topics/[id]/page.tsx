@@ -96,7 +96,7 @@ function TopicDetailPage() {
         err instanceof Error ? err.message : "Failed to start reading."
       );
       setStarting(false);
-    } finally{
+    } finally {
       setStarting(false);
     }
   }
