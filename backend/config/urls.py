@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/', include('apps.topics.urls')),
     path('api/', include('apps.requests.urls')),
     path('api/', include('apps.broadcasts.urls')),
+    path('api/', include('apps.sessions.urls')),
 ]
 
 # Serve media files during development (for profile pictures, etc.)

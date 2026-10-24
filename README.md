@@ -340,3 +340,4 @@ data.
 - Multi-Topic "Course" programs
 - Video hosting (we link/embed, not host)
 - Topic progress: per-page granularity, quiz completion tracking, certificate/achievement badges
+- Paid requests: an offered_price field on Request and a settlement flow. Settlement is off-platform in any future version that adds it; the platform does not hold funds. Escrow (hold until completion, refund on cancel) requires a payment provider with business registration (PayMongo, Xendit) and is deferred further.

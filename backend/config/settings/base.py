@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'apps.topics',
     'apps.requests',
     'apps.broadcasts',
+    'apps.sessions',
 ]
 
 MIDDLEWARE = [
