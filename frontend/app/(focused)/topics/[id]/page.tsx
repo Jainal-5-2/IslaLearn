@@ -26,6 +26,7 @@ import {
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { ReportButton } from "@/components/report-button";
 import { cn } from "@/lib/utils";
 
 export default function Page() {
@@ -139,7 +140,6 @@ function TopicDetailPage() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Top bar */}
       <header className="sticky top-0 z-30 bg-card border-b border-border">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -159,7 +159,6 @@ function TopicDetailPage() {
       </header>
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        {/* Title block */}
         <div className="mb-8">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
@@ -176,13 +175,17 @@ function TopicDetailPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             by{" "}
-            <span className="text-foreground">{topic.created_by.username}</span>
+            <Link
+              href={`/profile/${topic.created_by.id}`}
+              className="text-foreground hover:text-accent transition-colors"
+            >
+              {topic.created_by.username}
+            </Link>
             {" · "}
             {pageCount} {pageCount === 1 ? "page" : "pages"}
           </p>
         </div>
 
-        {/* Metadata cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
           <MetaCard
             icon={<BookOpen className="h-4 w-4" />}
@@ -202,7 +205,6 @@ function TopicDetailPage() {
           />
         </div>
 
-        {/* Description */}
         {topic.description && (
           <section className="mb-8">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
@@ -214,7 +216,6 @@ function TopicDetailPage() {
           </section>
         )}
 
-        {/* Preview */}
         {firstPage && (
           <section className="mb-8">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
@@ -254,7 +255,6 @@ function TopicDetailPage() {
           </section>
         )}
 
-        {/* Actions */}
         <section className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           {isOwner ? (
             <>
@@ -274,14 +274,20 @@ function TopicDetailPage() {
               </Link>
             </>
           ) : (
-            <button
-              onClick={handleStartReading}
-              disabled={starting || pageCount === 0}
-              className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-lg bg-accent text-accent-foreground font-medium hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <PlayCircle className="h-4 w-4" />
-              {readButtonLabel}
-            </button>
+            <>
+              <button
+                onClick={handleStartReading}
+                disabled={starting || pageCount === 0}
+                className="inline-flex items-center justify-center gap-2 h-12 px-6 rounded-lg bg-accent text-accent-foreground font-medium hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <PlayCircle className="h-4 w-4" />
+                {readButtonLabel}
+              </button>
+              <ReportButton
+                target={{ target_topic: topic.id }}
+                label="Report topic"
+              />
+            </>
           )}
         </section>
 

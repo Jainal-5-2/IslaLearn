@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { SessionPanel, ReviewableUser } from "@/components/sessions-panel";
+import { ReportButton } from "@/components/report-button";
 import { showToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
@@ -304,6 +305,13 @@ function BroadcastDetailPage() {
               <XCircle className="h-4 w-4" />
               {cancelling ? "Cancelling..." : "Cancel broadcast"}
             </button>
+          )}
+
+          {!isTutor && !isCancelled && (
+            <ReportButton
+              target={{ target_broadcast: broadcast.id }}
+              label="Report broadcast"
+            />
           )}
         </div>
       </div>

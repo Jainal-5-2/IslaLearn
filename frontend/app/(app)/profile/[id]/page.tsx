@@ -129,7 +129,7 @@ function ProfilePage() {
                 <MessageSquare className="h-4 w-4" />
                 {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
               </Link>
-              {!isSelf && <ReportButton targetUserId={userId} />}
+              {!isSelf && <ReportButton target={{ target_user: userId }} />}
             </div>
           </div>
         </div>

@@ -14,7 +14,18 @@ const CATEGORIES: { value: ReportCategory; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-export function ReportButton({ targetUserId }: { targetUserId: number }) {
+export type ReportTarget =
+  | { target_user: number }
+  | { target_topic: number }
+  | { target_broadcast: number };
+
+export function ReportButton({
+  target,
+  label = "Report",
+}: {
+  target: ReportTarget;
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState<ReportCategory>("harassment");
   const [reason, setReason] = useState("");
@@ -52,7 +63,7 @@ export function ReportButton({ targetUserId }: { targetUserId: number }) {
     setError("");
     try {
       await createReport({
-        target_user: targetUserId,
+        ...target,
         category,
         reason: reason.trim(),
       });
@@ -73,7 +84,7 @@ export function ReportButton({ targetUserId }: { targetUserId: number }) {
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-red-600 transition-colors"
       >
         <Flag className="h-3.5 w-3.5" />
-        Report
+        {label}
       </button>
 
       <AnimatePresence>
@@ -101,7 +112,7 @@ export function ReportButton({ targetUserId }: { targetUserId: number }) {
                 id="report-title"
                 className="text-lg font-semibold mb-1"
               >
-                Report this user
+                Report
               </h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Reports go to the admin. Use this for harassment, spam, or
