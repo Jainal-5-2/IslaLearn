@@ -10,7 +10,13 @@ import { getBroadcastRoomUrl } from "@/lib/api";
  * and embeds it in an iframe. If the provider changes, only this file
  * needs to change.
  */
-export function BroadcastRoom({ broadcastId }: { broadcastId: number }) {
+export function BroadcastRoom({
+  broadcastId,
+  displayName,
+}: {
+  broadcastId: number;
+  displayName: string;
+}) {
   const [roomUrl, setRoomUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,12 +71,14 @@ export function BroadcastRoom({ broadcastId }: { broadcastId: number }) {
     );
   }
 
-  // Whereby's embedded room takes over the iframe area. The
-  // display=iframe param tells Whereby to render without the
-  // surrounding chrome that its standalone room page uses.
-  const embedUrl = roomUrl.includes("?")
-    ? `${roomUrl}&embed=1`
-    : `${roomUrl}?embed=1`;
+  // Whereby's Prebuilt iframe reads ?displayName= to pre-fill the
+  // participant name, so users do not retype their IslaLearn username
+  // every time they enter a room.
+  const params = new URLSearchParams();
+  params.set("embed", "1");
+  if (displayName) params.set("displayName", displayName);
+  const separator = roomUrl.includes("?") ? "&" : "?";
+  const embedUrl = `${roomUrl}${separator}${params.toString()}`;
 
   return (
     <iframe

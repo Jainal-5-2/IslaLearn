@@ -4,7 +4,13 @@ import { Suspense, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
-import { getBroadcast, BroadcastDetail, ApiError } from "@/lib/api";
+import {
+  getBroadcast,
+  getMe,
+  BroadcastDetail,
+  User,
+  ApiError,
+} from "@/lib/api";
 import { BroadcastRoom } from "@/components/broadcast-room";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -23,12 +29,16 @@ function BroadcastRoomPage() {
   const broadcastId = Number(params.id);
 
   const [broadcast, setBroadcast] = useState<BroadcastDetail | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    getBroadcast(broadcastId)
-      .then(setBroadcast)
+    Promise.all([getBroadcast(broadcastId), getMe()])
+      .then(([b, u]) => {
+        setBroadcast(b);
+        setUser(u);
+      })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 404) {
           setError("Broadcast not found.");
@@ -43,7 +53,7 @@ function BroadcastRoomPage() {
     return <PageSkeleton variant="reader" />;
   }
 
-  if (error || !broadcast) {
+  if (error || !broadcast || !user) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background p-4">
         <p className="text-red-600">{error || "Broadcast not found."}</p>
@@ -103,7 +113,10 @@ function BroadcastRoomPage() {
       )}
 
       <div className="flex-1 min-h-0">
-        <BroadcastRoom broadcastId={broadcastId} />
+        <BroadcastRoom
+          broadcastId={broadcastId}
+          displayName={user.username}
+        />
       </div>
     </div>
   );
