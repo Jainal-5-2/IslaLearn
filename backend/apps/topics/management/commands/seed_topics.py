@@ -7,6 +7,26 @@ from apps.topics.models import Subject, Topic, TopicPage
 User = get_user_model()
 
 
+def _closing_page(next_topic_hint):
+    """Shared closing page used by every topic."""
+    return {
+        "page_type": "text",
+        "content": {
+            "body": (
+                "Nice work.\n\n"
+                "You made it to the end. If you want to keep going, "
+                "head back to /topics and pick your next topic. If any "
+                "part of this one still feels shaky, you can post a "
+                "request at /requests/new and a classmate who has been "
+                "through it can walk you through the rough spots one on "
+                "one.\n\n"
+                f"Next up, worth a look: {next_topic_hint}.\n\n"
+                "See you in the next one."
+            )
+        },
+    }
+
+
 TOPICS = [
     {
         "subject": "Python",
@@ -44,49 +64,6 @@ TOPICS = [
                 },
             },
             {
-                "page_type": "text",
-                "content": {
-                    "body": (
-                        "Parameters and arguments\n\n"
-                        "The names inside the parentheses are *parameters*. "
-                        "The values you pass when calling are *arguments*.\n\n"
-                        "    def greet(name):\n"
-                        "        return f'Hello, {name}!'\n\n"
-                        "    greet('Maria')   # 'Hello, Maria!'\n\n"
-                        "Python matches arguments to parameters by position by "
-                        "default. You can also pass them by name:\n\n"
-                        "    greet(name='Maria')   # same result\n\n"
-                        "This becomes useful when a function has several "
-                        "parameters and you only want to override one. Mixing "
-                        "positional and keyword arguments is allowed, but "
-                        "positional arguments must come first."
-                    )
-                },
-            },
-            {
-                "page_type": "text",
-                "content": {
-                    "body": (
-                        "Return values\n\n"
-                        "Functions don't have to return anything, but when "
-                        "they do, the `return` statement ends the function "
-                        "immediately and hands the value back to the caller.\n\n"
-                        "    def is_adult(age):\n"
-                        "        if age >= 18:\n"
-                        "            return True\n"
-                        "        return False\n\n"
-                        "A function without an explicit `return` returns "
-                        "`None`. That's fine for side-effecting functions "
-                        "(ones that print or write to a file), but most useful "
-                        "functions return a value.\n\n"
-                        "One common mistake: `return` exits the function. If "
-                        "you write `return x` inside a loop, the loop stops on "
-                        "the first iteration. If you meant to collect multiple "
-                        "values, build a list and return it once at the end."
-                    )
-                },
-            },
-            {
                 "page_type": "quiz",
                 "content": {
                     "questions": [
@@ -95,6 +72,29 @@ TOPICS = [
                             "options": ["0", "None", "An empty string", "It raises an error"],
                             "correct_index": 1,
                         },
+                        {
+                            "question": "What is the main benefit of wrapping a repeated calculation in a function?",
+                            "options": [
+                                "It runs faster",
+                                "It can be reused and changed in one place",
+                                "It uses less memory",
+                                "It avoids syntax errors",
+                            ],
+                            "correct_index": 1,
+                        },
+                    ]
+                },
+            },
+            {
+                "page_type": "video",
+                "content": {
+                    "url": "https://www.youtube.com/watch?v=9Os0o3wzS_I"
+                },
+            },
+            {
+                "page_type": "quiz",
+                "content": {
+                    "questions": [
                         {
                             "question": "Which call is valid for `def area(w, h): ...`?",
                             "options": [
@@ -118,6 +118,36 @@ TOPICS = [
                     ]
                 },
             },
+            {
+                "page_type": "text",
+                "content": {
+                    "body": (
+                        "Parameters, arguments, and the mistakes to avoid\n\n"
+                        "The names inside the parentheses are *parameters*. "
+                        "The values you pass when calling are *arguments*.\n\n"
+                        "    def greet(name):\n"
+                        "        return f'Hello, {name}!'\n\n"
+                        "Python matches arguments to parameters by position by "
+                        "default. You can also pass them by name:\n\n"
+                        "    greet(name='Maria')   # same result\n\n"
+                        "This becomes useful when a function has several "
+                        "parameters and you only want to override one. Mixing "
+                        "positional and keyword arguments is allowed, but "
+                        "positional arguments must come first.\n\n"
+                        "Two mistakes to watch for:\n\n"
+                        "1. Forgetting `return`. A function without an explicit "
+                        "`return` returns `None`, even if it does useful work "
+                        "internally. If you wrote `return x` inside a loop and "
+                        "meant to collect multiple values, build a list and "
+                        "return it once at the end.\n\n"
+                        "2. Shadowing with the same name. `def f(x): x = x + 1` "
+                        "modifies the local copy of `x`, not the caller's "
+                        "variable. If you want the caller to see the change, "
+                        "return the new value and let them reassign."
+                    )
+                },
+            },
+            _closing_page("Data Structures, then Recursion"),
         ],
     },
     {
@@ -152,22 +182,49 @@ TOPICS = [
                         "You convince yourself that if the recursive call "
                         "works for a smaller input, your function is correct "
                         "for the current input. That's the whole proof "
-                        "technique (induction, if you've seen it).\n\n"
-                        "In this topic we'll apply that idea to a linked list "
-                        "node:\n\n"
-                        "    class Node:\n"
-                        "        def __init__(self, value, next=None):\n"
-                        "            self.value = value\n"
-                        "            self.next = next"
+                        "technique (induction, if you've seen it)."
                     )
+                },
+            },
+            {
+                "page_type": "quiz",
+                "content": {
+                    "questions": [
+                        {
+                            "question": "What are the two required parts of a recursive function?",
+                            "options": [
+                                "A loop and a return",
+                                "A base case and a recursive case",
+                                "A helper function and a global variable",
+                                "An if statement and a for loop",
+                            ],
+                            "correct_index": 1,
+                        },
+                        {
+                            "question": "Why does the base case matter?",
+                            "options": [
+                                "It makes the function faster",
+                                "It stops the recursion from running forever",
+                                "It handles type errors",
+                                "It is optional",
+                            ],
+                            "correct_index": 1,
+                        },
+                    ]
                 },
             },
             {
                 "page_type": "text",
                 "content": {
                     "body": (
-                        "Length of a linked list, recursively\n\n"
-                        "Iterative version first, so you have a baseline:\n\n"
+                        "Walking a linked list\n\n"
+                        "In this topic we apply recursion to a linked list "
+                        "node:\n\n"
+                        "    class Node:\n"
+                        "        def __init__(self, value, next=None):\n"
+                        "            self.value = value\n"
+                        "            self.next = next\n\n"
+                        "Length, iteratively, for comparison:\n\n"
                         "    def length_iter(node):\n"
                         "        count = 0\n"
                         "        while node is not None:\n"
@@ -188,40 +245,7 @@ TOPICS = [
                         "                  = 1 + (1 + length_rec(3))\n"
                         "                  = 1 + (1 + (1 + length_rec(None)))\n"
                         "                  = 1 + (1 + (1 + 0))\n"
-                        "                  = 3\n\n"
-                        "Notice you don't need to see the whole trace to trust "
-                        "the function. The recursive case is obviously correct "
-                        "*if* the recursive call works. The base case is "
-                        "obviously correct. Therefore, by induction, all cases "
-                        "are correct."
-                    )
-                },
-            },
-            {
-                "page_type": "text",
-                "content": {
-                    "body": (
-                        "Search: does the list contain a value?\n\n"
-                        "    def contains(node, target):\n"
-                        "        if node is None:\n"
-                        "            return False\n"
-                        "        if node.value == target:\n"
-                        "            return True\n"
-                        "        return contains(node.next, target)\n\n"
-                        "Two base cases this time: the empty list (return "
-                        "False) and the head matching (return True). The "
-                        "recursive case is the only path that actually "
-                        "advances.\n\n"
-                        "Two base cases is common. Whenever a function has a "
-                        "reason to stop early, that reason becomes a base "
-                        "case. Here, finding the value early is exactly that.\n\n"
-                        "A subtle bug to avoid: if you write the recursive "
-                        "case as `return contains(node.next, target)` you're "
-                        "fine. But if you write `contains(node.next, target)` "
-                        "without `return`, Python executes the call, then "
-                        "discards its result and returns `None`. This is one "
-                        "of the most common beginner mistakes with recursion. "
-                        "Don't forget the `return` on the recursive case."
+                        "                  = 3"
                     )
                 },
             },
@@ -252,6 +276,36 @@ TOPICS = [
                     ]
                 },
             },
+            {
+                "page_type": "text",
+                "content": {
+                    "body": (
+                        "Two base cases, and the mistake to avoid\n\n"
+                        "Search: does the list contain a value?\n\n"
+                        "    def contains(node, target):\n"
+                        "        if node is None:\n"
+                        "            return False\n"
+                        "        if node.value == target:\n"
+                        "            return True\n"
+                        "        return contains(node.next, target)\n\n"
+                        "Two base cases this time: the empty list (return "
+                        "False) and the head matching (return True). The "
+                        "recursive case is the only path that actually "
+                        "advances.\n\n"
+                        "Two base cases is common. Whenever a function has a "
+                        "reason to stop early, that reason becomes a base "
+                        "case. Here, finding the value early is exactly that.\n\n"
+                        "The mistake to avoid: if you write the recursive case "
+                        "as `return contains(node.next, target)` you're fine. "
+                        "But if you write `contains(node.next, target)` "
+                        "without `return`, Python executes the call, then "
+                        "discards its result and returns `None`. This is one "
+                        "of the most common beginner mistakes with recursion. "
+                        "Don't forget the `return` on the recursive case."
+                    )
+                },
+            },
+            _closing_page("Algorithms, then Big-O"),
         ],
     },
     {
@@ -279,74 +333,41 @@ TOPICS = [
                         "between requests. If you log in, close your browser, "
                         "and come back, the server has no idea it's you unless "
                         "you send something (a cookie, a token) that proves it. "
-                        "This is why authentication exists.\n\n"
-                        "HTTP is *not*:\n\n"
-                        "- Encrypted (HTTPS adds encryption; HTTP alone is "
-                        "plaintext)\n"
-                        "- Ordered (requests can arrive in any order)\n"
-                        "- Reliable on its own (it runs over TCP, which handles "
-                        "retries)\n\n"
-                        "In the rest of this topic we'll trace a single request "
-                        "from your browser to the server and back."
+                        "This is why authentication exists."
                     )
                 },
             },
             {
-                "page_type": "text",
+                "page_type": "quiz",
                 "content": {
-                    "body": (
-                        "Anatomy of a request\n\n"
-                        "When you type `https://example.com/hello` and hit "
-                        "Enter, your browser opens a TCP connection to "
-                        "`example.com` on port 443, then sends a text message "
-                        "that looks like this:\n\n"
-                        "    GET /hello HTTP/1.1\n"
-                        "    Host: example.com\n"
-                        "    User-Agent: Mozilla/5.0 ...\n"
-                        "    Accept: text/html\n\n"
-                        "That's the whole request. Four lines. The first line "
-                        "is the *request line*: method, path, protocol version. "
-                        "Everything after that is a *header*, a key-value pair "
-                        "the server might care about.\n\n"
-                        "Methods tell the server what kind of action you want:\n\n"
-                        "- `GET`: read something, no side effects\n"
-                        "- `POST`: create something (submit a form, upload a file)\n"
-                        "- `PATCH`: modify something partially\n"
-                        "- `DELETE`: remove something\n\n"
-                        "There are more (`PUT`, `HEAD`, `OPTIONS`), but those "
-                        "four cover most of what you'll write."
-                    )
+                    "questions": [
+                        {
+                            "question": "What does it mean that HTTP is stateless?",
+                            "options": [
+                                "The server doesn't remember you between requests",
+                                "Requests must be sent in order",
+                                "Responses are always cached",
+                                "The client cannot send headers",
+                            ],
+                            "correct_index": 0,
+                        },
+                        {
+                            "question": "Which two things make up every HTTP exchange?",
+                            "options": [
+                                "A request and a response",
+                                "A cookie and a session",
+                                "A port and a host",
+                                "A GET and a POST",
+                            ],
+                            "correct_index": 0,
+                        },
+                    ]
                 },
             },
             {
-                "page_type": "text",
+                "page_type": "video",
                 "content": {
-                    "body": (
-                        "Anatomy of a response\n\n"
-                        "The server writes back:\n\n"
-                        "    HTTP/1.1 200 OK\n"
-                        "    Content-Type: text/html; charset=utf-8\n"
-                        "    Content-Length: 42\n"
-                        "\n"
-                        "    <h1>Hello, world</h1>\n\n"
-                        "The first line is the *status line*: protocol version, "
-                        "status code, and a short reason phrase. `200 OK` means "
-                        "\"the request succeeded, here's the thing you asked "
-                        "for.\"\n\n"
-                        "Status codes come in five families:\n\n"
-                        "- `2xx`: success (200, 201, 204)\n"
-                        "- `3xx`: redirect (301, 302, 304)\n"
-                        "- `4xx`: client error (400, 401, 403, 404)\n"
-                        "- `5xx`: server error (500, 502, 503)\n\n"
-                        "If you see a 4xx, *you* (the client) sent something the "
-                        "server couldn't accept. If you see a 5xx, the server "
-                        "messed up. Those are the two most useful status-code "
-                        "facts to remember.\n\n"
-                        "A blank line separates the headers from the body. The "
-                        "body can be empty (for `204 No Content`), HTML, JSON, "
-                        "an image, anything. The `Content-Type` header tells "
-                        "you how to interpret it."
-                    )
+                    "url": "https://www.youtube.com/watch?v=wW2A5SZ3GkI"
                 },
             },
             {
@@ -368,19 +389,46 @@ TOPICS = [
                             ],
                             "correct_index": 2,
                         },
-                        {
-                            "question": "HTTP is stateless. What does that mean?",
-                            "options": [
-                                "The server doesn't remember you between requests",
-                                "You can only send one request per connection",
-                                "All responses are cached",
-                                "No cookies are allowed",
-                            ],
-                            "correct_index": 0,
-                        },
                     ]
                 },
             },
+            {
+                "page_type": "text",
+                "content": {
+                    "body": (
+                        "Anatomy of a request and a response\n\n"
+                        "A request, as it goes on the wire:\n\n"
+                        "    GET /hello HTTP/1.1\n"
+                        "    Host: example.com\n"
+                        "    User-Agent: Mozilla/5.0 ...\n"
+                        "    Accept: text/html\n\n"
+                        "The first line is the *request line*: method, path, "
+                        "protocol version. Everything after that is a *header*, "
+                        "a key-value pair the server might care about.\n\n"
+                        "Methods tell the server what kind of action you want:\n\n"
+                        "- `GET`: read something, no side effects\n"
+                        "- `POST`: create something (submit a form, upload a file)\n"
+                        "- `PATCH`: modify something partially\n"
+                        "- `DELETE`: remove something\n\n"
+                        "A response, as it comes back:\n\n"
+                        "    HTTP/1.1 200 OK\n"
+                        "    Content-Type: text/html; charset=utf-8\n"
+                        "    Content-Length: 42\n"
+                        "\n"
+                        "    <h1>Hello, world</h1>\n\n"
+                        "Status codes come in five families:\n\n"
+                        "- `2xx`: success (200, 201, 204)\n"
+                        "- `3xx`: redirect (301, 302, 304)\n"
+                        "- `4xx`: client error (400, 401, 403, 404)\n"
+                        "- `5xx`: server error (500, 502, 503)\n\n"
+                        "If you see a 4xx, *you* (the client) sent something the "
+                        "server couldn't accept. If you see a 5xx, the server "
+                        "messed up. Those are the two most useful status-code "
+                        "facts to remember."
+                    )
+                },
+            },
+            _closing_page("Web Development, then Building an API"),
         ],
     },
     {
@@ -411,41 +459,58 @@ TOPICS = [
                         "that doesn't change as `n` grows.\n\n"
                         "Similarly, `O(n^2 + 100n)` is written `O(n^2)` because "
                         "once `n` is large enough, the `n^2` term dwarfs the "
-                        "`100n` term. Big-O only cares about the dominant term.\n\n"
-                        "This is a useful simplification, not a universal one. "
-                        "If `n` is always small (say, up to 100), a slower-growing "
-                        "algorithm with a big constant might beat a faster-"
-                        "growing one. But when you're comparing algorithms for "
-                        "an exam, an interview, or a real production workload "
-                        "that could hit large inputs, Big-O is the right lens."
+                        "`100n` term. Big-O only cares about the dominant term."
                     )
                 },
             },
             {
-                "page_type": "text",
+                "page_type": "quiz",
                 "content": {
-                    "body": (
-                        "The five growth shapes you'll see most\n\n"
-                        "- `O(1)`: constant time. The number of operations "
-                        "doesn't depend on `n`. Example: index into an array "
-                        "(`arr[5]`).\n\n"
-                        "- `O(log n)`: logarithmic. Each step roughly halves "
-                        "the remaining work. Example: binary search on a sorted "
-                        "array. Doubling `n` adds *one* step.\n\n"
-                        "- `O(n)`: linear. The work grows proportionally to "
-                        "`n`. Example: sum every element of an array.\n\n"
-                        "- `O(n log n)`: the classic sorting complexity. "
-                        "Merge sort and quicksort (average case) live here. "
-                        "Slightly worse than linear, much better than quadratic.\n\n"
-                        "- `O(n^2)`: quadratic. The work is roughly proportional "
-                        "to `n^2`. Example: a nested loop where the inner loop "
-                        "iterates over all of `n` for each iteration of the "
-                        "outer loop.\n\n"
-                        "That's the whole spectrum for 95% of code you'll read. "
-                        "There are worse ones (`O(2^n)`, `O(n!)`) but they show "
-                        "up mainly in brute-force search and algorithm "
-                        "puzzles, not everyday code."
-                    )
+                    "questions": [
+                        {
+                            "question": "What does Big-O actually measure?",
+                            "options": [
+                                "The exact number of operations",
+                                "How runtime grows as input grows",
+                                "The amount of memory used",
+                                "The number of bugs in the code",
+                            ],
+                            "correct_index": 1,
+                        },
+                        {
+                            "question": "Why is `O(2n)` the same as `O(n)`?",
+                            "options": [
+                                "Because 2 is a small number",
+                                "Because constants are dropped in Big-O",
+                                "Because `n` is never really that big",
+                                "Because `2n` is slower",
+                            ],
+                            "correct_index": 1,
+                        },
+                    ]
+                },
+            },
+            {
+                "page_type": "video",
+                "content": {
+                    "url": "https://www.youtube.com/watch?v=D6xkbGLQesk"
+                },
+            },
+            {
+                "page_type": "quiz",
+                "content": {
+                    "questions": [
+                        {
+                            "question": "What is the Big-O complexity of accessing `arr[i]`?",
+                            "options": ["O(1)", "O(log n)", "O(n)", "O(n^2)"],
+                            "correct_index": 0,
+                        },
+                        {
+                            "question": "Two nested loops over the same `n`-item array. What's the complexity?",
+                            "options": ["O(1)", "O(n)", "O(n log n)", "O(n^2)"],
+                            "correct_index": 3,
+                        },
+                    ]
                 },
             },
             {
@@ -466,9 +531,6 @@ TOPICS = [
                         "    for x in arr:\n"
                         "        for y in arr:\n"
                         "            print(x, y)\n\n"
-                        "    # O(n log n): one loop, and inside it a binary search\n"
-                        "    for x in arr:\n"
-                        "        i = binary_search(sorted_arr, x)\n\n"
                         "Two wrinkles:\n\n"
                         "1. A loop that runs a constant number of times isn't "
                         "`O(n)`: `for i in range(10): ...` is `O(1)`.\n\n"
@@ -480,33 +542,7 @@ TOPICS = [
                     )
                 },
             },
-            {
-                "page_type": "quiz",
-                "content": {
-                    "questions": [
-                        {
-                            "question": "What is the Big-O complexity of accessing `arr[i]`?",
-                            "options": ["O(1)", "O(log n)", "O(n)", "O(n^2)"],
-                            "correct_index": 0,
-                        },
-                        {
-                            "question": "Two nested loops over the same `n`-item array. What's the complexity?",
-                            "options": ["O(1)", "O(n)", "O(n log n)", "O(n^2)"],
-                            "correct_index": 3,
-                        },
-                        {
-                            "question": "Why do we write `O(n)` instead of `O(3n + 7)`?",
-                            "options": [
-                                "Because constants don't affect the growth shape",
-                                "Because the + 7 rounds down to 0",
-                                "Because `3n` is always the same as `n`",
-                                "Because Python is fast",
-                            ],
-                            "correct_index": 0,
-                        },
-                    ]
-                },
-            },
+            _closing_page("SQL, then Database Design"),
         ],
     },
     {
@@ -536,69 +572,41 @@ TOPICS = [
                         "    SELECT students.name, enrollments.course\n"
                         "    FROM students\n"
                         "    JOIN enrollments ON students.id = enrollments.student_id;\n\n"
-                        "The `ON` clause says *how to match rows*. In this "
-                        "query, we're saying: pair a student row with an "
-                        "enrollment row whenever their IDs agree.\n\n"
-                        "There are four flavors of join. They differ in what "
-                        "they do with rows that *don't* match."
+                        "The `ON` clause says *how to match rows*."
                     )
                 },
             },
             {
-                "page_type": "text",
+                "page_type": "quiz",
                 "content": {
-                    "body": (
-                        "INNER JOIN (the default)\n\n"
-                        "Returns only rows where the match succeeds on both "
-                        "sides. If a student has no enrollments, they won't "
-                        "appear. If an enrollment references a missing student "
-                        "(shouldn't happen with proper foreign keys, but "
-                        "sometimes does), it won't appear either.\n\n"
-                        "    SELECT students.name, enrollments.course\n"
-                        "    FROM students\n"
-                        "    INNER JOIN enrollments ON students.id = enrollments.student_id;\n\n"
-                        "`JOIN` on its own means `INNER JOIN`. This is the "
-                        "most-used join, and it's the one you want 80% of the "
-                        "time.\n\n"
-                        "LEFT JOIN (or LEFT OUTER JOIN)\n\n"
-                        "Returns all rows from the left table, plus matched "
-                        "rows from the right. If a student has no enrollments, "
-                        "they still appear, with `NULL` in the enrollment "
-                        "columns.\n\n"
-                        "    SELECT students.name, enrollments.course\n"
-                        "    FROM students\n"
-                        "    LEFT JOIN enrollments ON students.id = enrollments.student_id;\n\n"
-                        "This is the join you want when you're asking \"who has "
-                        "*not* done X?\" Join, filter to `WHERE enrollments.id IS NULL`, "
-                        "and you have the students with no enrollments."
-                    )
+                    "questions": [
+                        {
+                            "question": "What does a JOIN do?",
+                            "options": [
+                                "Combines rows from two tables based on a related column",
+                                "Deletes duplicate rows",
+                                "Creates a new table",
+                                "Sorts the result set",
+                            ],
+                            "correct_index": 0,
+                        },
+                        {
+                            "question": "What does the `ON` clause specify?",
+                            "options": [
+                                "The sort order",
+                                "How rows from the two tables match",
+                                "Which columns to return",
+                                "How many rows to return",
+                            ],
+                            "correct_index": 1,
+                        },
+                    ]
                 },
             },
             {
-                "page_type": "text",
+                "page_type": "video",
                 "content": {
-                    "body": (
-                        "RIGHT JOIN and FULL OUTER JOIN\n\n"
-                        "`RIGHT JOIN` is the mirror of `LEFT JOIN`: all rows "
-                        "from the right table, plus matches from the left. In "
-                        "practice, most people never write `RIGHT JOIN`. They "
-                        "swap the two tables and use `LEFT JOIN` instead, "
-                        "because it reads more naturally. MySQL supports both; "
-                        "SQLite (until recently) only supported LEFT.\n\n"
-                        "`FULL OUTER JOIN` returns all rows from both sides, "
-                        "matched where possible, `NULL` where not. MySQL does "
-                        "*not* support `FULL OUTER JOIN` directly. You have to "
-                        "emulate it with a `LEFT JOIN UNION RIGHT JOIN`. If "
-                        "you're ever asked to do a full outer join in MySQL, "
-                        "that's the pattern to reach for.\n\n"
-                        "The one-sentence rule that makes joins click:\n\n"
-                        "*The type of join determines what happens to unmatched "
-                        "rows.*\n\n"
-                        "INNER drops them. LEFT keeps them from the left. "
-                        "RIGHT keeps them from the right. FULL keeps them from "
-                        "both. Everything else is just the `ON` clause saying "
-                        "which rows count as \"matching\"."
-                    )
+                    "url": "https://www.youtube.com/watch?v=79EBoVPUzkE"
                 },
             },
             {
@@ -625,19 +633,39 @@ TOPICS = [
                             ],
                             "correct_index": 2,
                         },
-                        {
-                            "question": "Does MySQL support `FULL OUTER JOIN` directly?",
-                            "options": [
-                                "Yes, since 5.7",
-                                "Yes, but only with foreign keys",
-                                "No, you emulate it with UNION",
-                                "Yes, but it's deprecated",
-                            ],
-                            "correct_index": 2,
-                        },
                     ]
                 },
             },
+            {
+                "page_type": "text",
+                "content": {
+                    "body": (
+                        "INNER, LEFT, and the rule that makes it click\n\n"
+                        "INNER JOIN returns only rows where the match succeeds "
+                        "on both sides. If a student has no enrollments, they "
+                        "won't appear.\n\n"
+                        "LEFT JOIN returns all rows from the left table, plus "
+                        "matched rows from the right. If a student has no "
+                        "enrollments, they still appear, with `NULL` in the "
+                        "enrollment columns.\n\n"
+                        "That is the join you want when you're asking \"who has "
+                        "*not* done X?\" Join, filter to "
+                        "`WHERE enrollments.id IS NULL`, and you have the "
+                        "students with no enrollments.\n\n"
+                        "`RIGHT JOIN` is the mirror. In practice most people "
+                        "never write it; they swap the tables and use LEFT.\n\n"
+                        "MySQL does *not* support `FULL OUTER JOIN` directly. "
+                        "You have to emulate it with a `LEFT JOIN UNION RIGHT "
+                        "JOIN`.\n\n"
+                        "The one-sentence rule:\n\n"
+                        "*The type of join determines what happens to unmatched "
+                        "rows.* INNER drops them. LEFT keeps them from the "
+                        "left. RIGHT keeps them from the right. FULL keeps "
+                        "them from both."
+                    )
+                },
+            },
+            _closing_page("Version Control (Git), then Branching"),
         ],
     },
     {
@@ -658,11 +686,9 @@ TOPICS = [
                         "The four places your code lives\n\n"
                         "Git confuses people because it has four distinct "
                         "places where files can be, and moving between them "
-                        "requires different commands. Once you hold the mental "
-                        "map, Git stops feeling like magic.\n\n"
+                        "requires different commands.\n\n"
                         "1. **Working directory**: the files as they exist on "
-                        "disk right now. When you edit a file in VS Code, you're "
-                        "editing the working directory.\n\n"
+                        "disk right now.\n\n"
                         "2. **Staging area** (also called *the index*): a "
                         "holding area where you put changes you intend to "
                         "commit. Files move here via `git add`.\n\n"
@@ -671,69 +697,7 @@ TOPICS = [
                         "4. **Remote**: a copy of the repository on a server "
                         "(GitHub, GitLab, etc.). Files move to the remote via "
                         "`git push`, and changes from the remote come back via "
-                        "`git pull`.\n\n"
-                        "Every Git command you'll ever run moves files between "
-                        "these four places. Once you know which direction you "
-                        "want, the command name usually tells you."
-                    )
-                },
-            },
-            {
-                "page_type": "text",
-                "content": {
-                    "body": (
-                        "The five commands you'll use daily\n\n"
-                        "    git status\n\n"
-                        "Tells you what's where. Which files changed in the "
-                        "working directory? Which are staged? Are you ahead of "
-                        "or behind the remote? Run it constantly. When in doubt, "
-                        "run `git status`.\n\n"
-                        "    git add <file>\n\n"
-                        "Moves changes from the working directory to the "
-                        "staging area. `git add .` stages everything in the "
-                        "current directory and below. Convenient, but easy to "
-                        "accidentally stage files you didn't mean to (like "
-                        "`node_modules/` if it's not in `.gitignore`). Prefer "
-                        "`git add <specific-file>` until you trust your "
-                        "`.gitignore`.\n\n"
-                        "    git commit -m \"message\"\n\n"
-                        "Takes everything in the staging area and creates a "
-                        "commit in the local repo. The message should say *why* "
-                        "you made the change, not *what* the change was. The "
-                        "diff already shows what.\n\n"
-                        "    git push\n\n"
-                        "Sends your local commits to the remote.\n\n"
-                        "    git pull\n\n"
-                        "Fetches changes from the remote and merges them into "
-                        "your current branch. `git pull` is `git fetch` "
-                        "followed by `git merge`, which is important to know "
-                        "when the merge conflicts."
-                    )
-                },
-            },
-            {
-                "page_type": "text",
-                "content": {
-                    "body": (
-                        "Commits are snapshots, not diffs\n\n"
-                        "Every commit records the state of the whole repository "
-                        "at that moment, not just the changes since the last "
-                        "commit. When you run `git show <hash>`, Git computes "
-                        "the diff *for you* by comparing this snapshot to the "
-                        "previous one. The underlying storage is snapshots, not "
-                        "patches.\n\n"
-                        "Why does this matter? Because it's why Git is fast at "
-                        "switching branches and why merging is usually cheap. "
-                        "It's also why commits are immutable: you can't edit a "
-                        "commit, only create a new one that supersedes it. "
-                        "`git commit --amend` isn't modifying the old commit. "
-                        "It's creating a new one with a different hash and "
-                        "moving the branch pointer to it.\n\n"
-                        "The practical takeaway: **commit often**. Small commits "
-                        "are cheap. Each one is a snapshot you can return to "
-                        "without losing other changes. If you commit once a day, "
-                        "you'll dread commit day. If you commit every logical "
-                        "change, you'll never lose work."
+                        "`git pull`."
                     )
                 },
             },
@@ -742,24 +706,37 @@ TOPICS = [
                 "content": {
                     "questions": [
                         {
-                            "question": "Which command moves changes from the working directory to the staging area?",
+                            "question": "Where do files live after `git add` but before `git commit`?",
                             "options": [
-                                "git commit",
-                                "git push",
-                                "git add",
-                                "git status",
-                            ],
-                            "correct_index": 2,
-                        },
-                        {
-                            "question": "A commit in Git is best understood as?",
-                            "options": [
-                                "A diff against the previous commit",
-                                "A snapshot of the entire repo at that moment",
-                                "A patch file",
-                                "A backup of a single file",
+                                "Working directory",
+                                "Staging area",
+                                "Local repository",
+                                "Remote",
                             ],
                             "correct_index": 1,
+                        },
+                        {
+                            "question": "Which command sends your local commits to the remote?",
+                            "options": ["git add", "git commit", "git push", "git pull"],
+                            "correct_index": 2,
+                        },
+                    ]
+                },
+            },
+            {
+                "page_type": "video",
+                "content": {
+                    "url": "https://www.youtube.com/watch?v=HF12-91iazM"
+                },
+            },
+            {
+                "page_type": "quiz",
+                "content": {
+                    "questions": [
+                        {
+                            "question": "Which command moves changes from the working directory to the staging area?",
+                            "options": ["git commit", "git push", "git add", "git status"],
+                            "correct_index": 2,
                         },
                         {
                             "question": "`git pull` is shorthand for which two commands?",
@@ -774,6 +751,40 @@ TOPICS = [
                     ]
                 },
             },
+            {
+                "page_type": "text",
+                "content": {
+                    "body": (
+                        "The five commands you'll use daily\n\n"
+                        "    git status\n\n"
+                        "Tells you what's where. Which files changed in the "
+                        "working directory? Which are staged? Run it "
+                        "constantly. When in doubt, run `git status`.\n\n"
+                        "    git add <file>\n\n"
+                        "Moves changes from the working directory to the "
+                        "staging area. `git add .` stages everything in the "
+                        "current directory and below. Convenient, but easy to "
+                        "accidentally stage files you didn't mean to. Prefer "
+                        "`git add <specific-file>` until you trust your "
+                        "`.gitignore`.\n\n"
+                        "    git commit -m \"message\"\n\n"
+                        "Creates a commit in the local repo. The message "
+                        "should say *why* you made the change, not *what* the "
+                        "change was. The diff already shows what.\n\n"
+                        "    git push\n\n"
+                        "Sends your local commits to the remote.\n\n"
+                        "    git pull\n\n"
+                        "Fetches changes from the remote and merges them into "
+                        "your current branch. `git pull` is `git fetch` "
+                        "followed by `git merge`, which is important to know "
+                        "when the merge conflicts.\n\n"
+                        "A commit is a *snapshot* of the whole repo, not a "
+                        "diff. That is why `git show <hash>` can compute the "
+                        "diff for you, and why switching branches is fast."
+                    )
+                },
+            },
+            _closing_page("Object-Oriented Programming, then Classes"),
         ],
     },
     {
@@ -809,70 +820,41 @@ TOPICS = [
                         "    luna = Dog('Luna', 'Husky')\n"
                         "    print(fido.bark())   # 'Fido says woof'\n"
                         "    print(luna.bark())   # 'Luna says woof'\n\n"
-                        "Two objects, same methods, different data. That's "
-                        "the whole idea of OOP: bundle state (data) and "
-                        "behavior (methods) together."
+                        "Two objects, same methods, different data."
                     )
                 },
             },
             {
-                "page_type": "text",
+                "page_type": "quiz",
                 "content": {
-                    "body": (
-                        "What `self` actually is\n\n"
-                        "Here's the confusing bit. When you call "
-                        "`fido.bark()`, you don't pass `self` yourself. But "
-                        "`bark` is defined as `def bark(self): ...` with one "
-                        "parameter. Where does `self` come from?\n\n"
-                        "Python passes it for you. `fido.bark()` is "
-                        "essentially shorthand for `Dog.bark(fido)`. The `self` "
-                        "inside the method *is* `fido`. That's it. `self` is "
-                        "the instance the method was called on.\n\n"
-                        "This means two things:\n\n"
-                        "1. `self` is not a keyword. It's a convention. You "
-                        "could name it `this` and Python wouldn't care. But "
-                        "every Python programmer alive expects `self`, so "
-                        "don't.\n\n"
-                        "2. `self.name = name` inside `__init__` is what "
-                        "creates the instance variable. Without `self.`, "
-                        "`name = name` just reassigns the parameter to itself "
-                        "and creates nothing.\n\n"
-                        "Concretely:\n\n"
-                        "    def bark(self):\n"
-                        "        return f'{self.name} says woof'\n\n"
-                        "The `self.name` inside refers to *this particular "
-                        "instance's* `name`. When `fido.bark()` runs, "
-                        "`self.name` is `'Fido'`. When `luna.bark()` runs, it's "
-                        "`'Luna'`."
-                    )
+                    "questions": [
+                        {
+                            "question": "What is the relationship between a class and an object?",
+                            "options": [
+                                "A class is an instance of an object",
+                                "An object is an instance of a class",
+                                "They are the same thing",
+                                "A class is a variable",
+                            ],
+                            "correct_index": 1,
+                        },
+                        {
+                            "question": "In `fido = Dog('Fido', 'Labrador')`, what is `fido`?",
+                            "options": [
+                                "A class",
+                                "A method",
+                                "An instance of `Dog`",
+                                "A parameter",
+                            ],
+                            "correct_index": 2,
+                        },
+                    ]
                 },
             },
             {
-                "page_type": "text",
+                "page_type": "video",
                 "content": {
-                    "body": (
-                        "Why `__init__` exists\n\n"
-                        "`__init__` is the *initializer*. Python calls it "
-                        "automatically when you write `Dog('Fido', 'Labrador')`. "
-                        "Its job is to set up the instance's initial state, "
-                        "usually by assigning `self.<attribute> = <value>` for "
-                        "each attribute the instance needs.\n\n"
-                        "You don't *have* to define `__init__`. A class with no "
-                        "`__init__` still works; its instances just start "
-                        "empty. But most classes that hold state need to set "
-                        "that state up, and `__init__` is where that happens.\n\n"
-                        "Note the double underscore prefix and suffix: "
-                        "`__init__`, `__str__`, `__eq__`, `__len__`. These are "
-                        "*dunder methods* (double underscore), Python's term "
-                        "for hooks that the language calls for you. You rarely "
-                        "call them directly; you use the operator that "
-                        "triggers them (`str(x)`, `x == y`, `len(x)`), and "
-                        "Python dispatches to the right dunder.\n\n"
-                        "That's the whole shape of OOP in Python: a class is a "
-                        "blueprint, `__init__` sets it up, `self` is the "
-                        "instance, methods are behaviors, and dunders are "
-                        "hooks the language calls on your behalf."
-                    )
+                    "url": "https://www.youtube.com/watch?v=f0TrMH9s-VE"
                 },
             },
             {
@@ -899,19 +881,44 @@ TOPICS = [
                             ],
                             "correct_index": 1,
                         },
-                        {
-                            "question": "What happens in `self.name = name` inside `__init__`?",
-                            "options": [
-                                "It reassigns the parameter",
-                                "It sets an instance attribute on `self`",
-                                "It sets a class attribute",
-                                "It does nothing",
-                            ],
-                            "correct_index": 1,
-                        },
                     ]
                 },
             },
+            {
+                "page_type": "text",
+                "content": {
+                    "body": (
+                        "What `self` actually is, and why `__init__` exists\n\n"
+                        "When you call `fido.bark()`, you don't pass `self` "
+                        "yourself. But `bark` is defined as `def bark(self): "
+                        "...` with one parameter. Where does `self` come from?\n\n"
+                        "Python passes it for you. `fido.bark()` is "
+                        "essentially shorthand for `Dog.bark(fido)`. The `self` "
+                        "inside the method *is* `fido`. That's it. `self` is "
+                        "the instance the method was called on.\n\n"
+                        "This means two things:\n\n"
+                        "1. `self` is not a keyword. It's a convention. You "
+                        "could name it `this` and Python wouldn't care. But "
+                        "every Python programmer alive expects `self`, so "
+                        "don't.\n\n"
+                        "2. `self.name = name` inside `__init__` is what "
+                        "creates the instance variable. Without `self.`, "
+                        "`name = name` just reassigns the parameter to itself "
+                        "and creates nothing.\n\n"
+                        "`__init__` is the *initializer*. Python calls it "
+                        "automatically when you write `Dog('Fido', 'Labrador')`. "
+                        "Its job is to set up the instance's initial state, "
+                        "usually by assigning `self.<attribute> = <value>` for "
+                        "each attribute the instance needs.\n\n"
+                        "The dunder methods (`__init__`, `__str__`, `__eq__`, "
+                        "`__len__`) are hooks the language calls for you. You "
+                        "rarely call them directly; you use the operator that "
+                        "triggers them (`str(x)`, `x == y`, `len(x)`), and "
+                        "Python dispatches to the right dunder."
+                    )
+                },
+            },
+            _closing_page("Operating Systems, then Processes"),
         ],
     },
     {
@@ -943,9 +950,35 @@ TOPICS = [
                         "(PID), and a thread that starts executing at `main`. "
                         "If the script spawns a thread, that thread gets its "
                         "own program counter and stack but shares the process's "
-                        "heap, file descriptors, and global data.\n\n"
-                        "The next three pages unpack the implications."
+                        "heap, file descriptors, and global data."
                     )
+                },
+            },
+            {
+                "page_type": "quiz",
+                "content": {
+                    "questions": [
+                        {
+                            "question": "What's the key difference between a process and a thread?",
+                            "options": [
+                                "Processes are faster",
+                                "Threads share memory; processes don't",
+                                "Only processes have PIDs",
+                                "Threads are OS-level; processes are user-level",
+                            ],
+                            "correct_index": 1,
+                        },
+                        {
+                            "question": "What does a thread share with other threads in the same process?",
+                            "options": [
+                                "Nothing",
+                                "Only the stack",
+                                "Memory, file descriptors, and global data",
+                                "Only the program counter",
+                            ],
+                            "correct_index": 2,
+                        },
+                    ]
                 },
             },
             {
@@ -957,27 +990,49 @@ TOPICS = [
                         "allocate a new address space, copy or re-map parts of "
                         "the parent, set up file descriptors, and register a "
                         "new PID. On modern Linux, `fork()` is fast (the OS "
-                        "uses copy-on-write tricks), but it's still order-of-"
-                        "magnitude slower than creating a thread.\n\n"
+                        "uses copy-on-write tricks), but it's still "
+                        "order-of-magnitude slower than creating a thread.\n\n"
                         "Creating a thread is cheap. It lives inside an "
                         "existing process, so it reuses the address space and "
                         "file descriptors. You can have thousands of threads "
                         "in one process without much overhead.\n\n"
                         "The tradeoff: threads share memory, processes don't. "
                         "That means:\n\n"
-                        "- **Processes** are isolated. If one crashes (segfault, "
-                        "bad pointer, uncaught signal), the OS kills only that "
-                        "process. Other processes are unaffected. This is why "
-                        "browsers use one process per tab: a tab crash doesn't "
-                        "take down the browser.\n\n"
-                        "- **Threads** are not isolated. If one thread writes to "
-                        "memory another thread is reading, both are affected. A "
-                        "segfault in one thread kills the whole process. This "
-                        "is why multithreaded programming requires care.\n\n"
-                        "So: processes are safe but heavy. Threads are fast but "
-                        "sharp. Choose based on whether you need isolation more "
-                        "than speed."
+                        "- **Processes** are isolated. If one crashes, the OS "
+                        "kills only that process. This is why browsers use one "
+                        "process per tab: a tab crash doesn't take down the "
+                        "browser.\n\n"
+                        "- **Threads** are not isolated. A segfault in one "
+                        "thread kills the whole process. This is why "
+                        "multithreaded programming requires care."
                     )
+                },
+            },
+            {
+                "page_type": "quiz",
+                "content": {
+                    "questions": [
+                        {
+                            "question": "If one thread in a process segfaults, what happens?",
+                            "options": [
+                                "Only that thread dies",
+                                "The whole process dies",
+                                "The OS restarts the thread",
+                                "Nothing",
+                            ],
+                            "correct_index": 1,
+                        },
+                        {
+                            "question": "Why do browsers use one process per tab?",
+                            "options": [
+                                "To share memory between tabs",
+                                "So a tab crash doesn't take down the browser",
+                                "To make tabs load faster",
+                                "Because threads cannot render HTML",
+                            ],
+                            "correct_index": 1,
+                        },
+                    ]
                 },
             },
             {
@@ -1002,53 +1057,14 @@ TOPICS = [
                         "(though you still need locks).\n"
                         "- Thread startup cost matters. Spawning a thread is "
                         "cheap enough that you can do it per request.\n\n"
-                        "The practical guidance for Python specifically:\n\n"
+                        "The practical guidance for Python:\n\n"
                         "- I/O-bound: `threading` or `asyncio`\n"
-                        "- CPU-bound: `multiprocessing` or `concurrent.futures."
-                        "ProcessPoolExecutor`\n\n"
-                        "In languages without a GIL (Java, Go, Rust), threads "
-                        "do CPU work in parallel too, so the distinction "
-                        "softens. But the memory-sharing tradeoff is universal."
+                        "- CPU-bound: `multiprocessing` or "
+                        "`concurrent.futures.ProcessPoolExecutor`"
                     )
                 },
             },
-            {
-                "page_type": "quiz",
-                "content": {
-                    "questions": [
-                        {
-                            "question": "What's the key difference between a process and a thread?",
-                            "options": [
-                                "Processes are faster",
-                                "Threads share memory; processes don't",
-                                "Only processes have PIDs",
-                                "Threads are OS-level; processes are user-level",
-                            ],
-                            "correct_index": 1,
-                        },
-                        {
-                            "question": "If one thread in a process segfaults, what happens?",
-                            "options": [
-                                "Only that thread dies",
-                                "The whole process dies",
-                                "The OS restarts the thread",
-                                "Nothing",
-                            ],
-                            "correct_index": 1,
-                        },
-                        {
-                            "question": "In CPython, which is better for CPU-bound work?",
-                            "options": [
-                                "`threading`",
-                                "`multiprocessing`",
-                                "`asyncio`",
-                                "None, Python can't do it",
-                            ],
-                            "correct_index": 1,
-                        },
-                    ]
-                },
-            },
+            _closing_page("Computer Networks, then DNS"),
         ],
     },
     {
@@ -1092,72 +1108,6 @@ TOPICS = [
                 },
             },
             {
-                "page_type": "text",
-                "content": {
-                    "body": (
-                        "The resolution chain\n\n"
-                        "When you type `www.google.com` into your browser, "
-                        "here's the sequence (caching aside, for now):\n\n"
-                        "1. **Your OS** checks its local cache. If it has a "
-                        "recent answer, done. If not:\n\n"
-                        "2. **Your OS** asks your configured *recursive "
-                        "resolver* (usually run by your ISP, or Cloudflare at "
-                        "`1.1.1.1`, or Google at `8.8.8.8`). The resolver does "
-                        "the rest of the work on your behalf.\n\n"
-                        "3. **The resolver** asks a *root server*. Root servers "
-                        "know nothing about Google, but they know who runs the "
-                        "`.com` zone. They reply: \"Ask the `.com` servers, here "
-                        "are their addresses.\"\n\n"
-                        "4. **The resolver** asks a `.com` server. Those know "
-                        "which nameservers are authoritative for "
-                        "`google.com`. They reply: \"Ask Google's nameservers, "
-                        "here are their addresses.\"\n\n"
-                        "5. **The resolver** asks Google's nameserver for "
-                        "`www.google.com`. That server actually knows the "
-                        "answer and returns the IP.\n\n"
-                        "6. **The resolver** caches the answer for the TTL "
-                        "(time-to-live) duration, then returns it to your OS, "
-                        "which also caches it, then returns it to your browser.\n\n"
-                        "Six steps sounds slow. It usually takes ~20-100ms the "
-                        "first time, and 0ms on subsequent requests thanks to "
-                        "caching at every level."
-                    )
-                },
-            },
-            {
-                "page_type": "text",
-                "content": {
-                    "body": (
-                        "Caching is the whole performance story\n\n"
-                        "Without caching, every single HTTP request would "
-                        "trigger a full DNS resolution: six round trips "
-                        "across the internet before the browser even opens a "
-                        "TCP connection. Every page load would be noticeably "
-                        "slower.\n\n"
-                        "Caching happens at many levels:\n\n"
-                        "- **Browser cache**: usually 1-2 minutes\n"
-                        "- **OS cache**: minutes to hours\n"
-                        "- **Recursive resolver cache**: governed by the "
-                        "record's TTL, often 5 minutes to 24 hours\n"
-                        "- **Authoritative server**: not a cache, but "
-                        "*propagates* updates on the TTL schedule\n\n"
-                        "The TTL is the key knob. A record with TTL 300 can "
-                        "change in 5 minutes and be picked up by the whole "
-                        "world within ~5 minutes. A record with TTL 86400 "
-                        "changes once a day. When you're about to migrate a "
-                        "site, the standard play is: reduce the TTL to 300 "
-                        "a day or two *before* the migration, do the "
-                        "migration, then raise it back. That way everyone "
-                        "picks up the new address quickly.\n\n"
-                        "One more implication: \"I changed the DNS but the "
-                        "old site still loads.\" That's caching. The change "
-                        "is live but your resolver, or your OS, still has the "
-                        "old answer cached until its TTL expires. Wait out the "
-                        "TTL, or flush your cache."
-                    )
-                },
-            },
-            {
                 "page_type": "quiz",
                 "content": {
                     "questions": [
@@ -1171,6 +1121,29 @@ TOPICS = [
                             ],
                             "correct_index": 1,
                         },
+                        {
+                            "question": "Is DNS a single central server?",
+                            "options": [
+                                "Yes, run by ICANN",
+                                "Yes, one per country",
+                                "No, it is distributed and hierarchical",
+                                "Only for .com domains",
+                            ],
+                            "correct_index": 2,
+                        },
+                    ]
+                },
+            },
+            {
+                "page_type": "video",
+                "content": {
+                    "url": "https://www.youtube.com/watch?v=72snZctFFtA"
+                },
+            },
+            {
+                "page_type": "quiz",
+                "content": {
+                    "questions": [
                         {
                             "question": "Which server actually returns the IP for `www.google.com`?",
                             "options": [
@@ -1194,6 +1167,40 @@ TOPICS = [
                     ]
                 },
             },
+            {
+                "page_type": "text",
+                "content": {
+                    "body": (
+                        "The resolution chain, and why caching matters\n\n"
+                        "When you type `www.google.com`:\n\n"
+                        "1. **Your OS** checks its local cache. If it has a "
+                        "recent answer, done.\n\n"
+                        "2. **Your OS** asks your configured *recursive "
+                        "resolver* (often your ISP, or Cloudflare at `1.1.1.1`, "
+                        "or Google at `8.8.8.8`).\n\n"
+                        "3. **The resolver** asks a *root server*. Root servers "
+                        "know nothing about Google, but they know who runs the "
+                        "`.com` zone.\n\n"
+                        "4. **The resolver** asks a `.com` server. Those know "
+                        "which nameservers are authoritative for `google.com`.\n\n"
+                        "5. **The resolver** asks Google's nameserver, which "
+                        "returns the IP.\n\n"
+                        "6. **The resolver** caches the answer for the TTL "
+                        "(time-to-live), then returns it to your OS, which "
+                        "also caches it, then to your browser.\n\n"
+                        "Without caching, every HTTP request would trigger six "
+                        "round trips before the browser even opens a TCP "
+                        "connection. Caching happens at every level: browser "
+                        "(1-2 minutes), OS (minutes to hours), recursive "
+                        "resolver (governed by TTL, often 5 minutes to 24 "
+                        "hours).\n\n"
+                        "When you're about to migrate a site, the standard "
+                        "play is: reduce the TTL to 300 a day before, do the "
+                        "migration, then raise it back."
+                    )
+                },
+            },
+            _closing_page("Python, then Functions"),
         ],
     },
 ]
@@ -1294,7 +1301,6 @@ class Command(BaseCommand):
             except User.DoesNotExist:
                 raise CommandError(f"User '{username}' does not exist.")
 
-        # Fallback: first superuser, then first user
         tutor = User.objects.filter(is_superuser=True).order_by("id").first()
         if tutor:
             return tutor

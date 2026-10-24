@@ -169,7 +169,6 @@ function TopicReaderPage() {
     setUnlocking(true);
     try {
       await unlockTopic(topic.id);
-      // Refetch so the now-unlocked pages come back with real content.
       const refreshed = await getTopic(topic.id);
       setTopic(refreshed);
     } catch (err) {
@@ -793,18 +792,14 @@ function QuizPageRenderer({
               >
                 {isLastQuestion ? "Restart Quiz" : "Next Question"}
               </button>
-              {isLastQuestion && (
+              {isLastQuestion && isLastPage && (
                 <button
-                  onClick={isLastPage ? onFinish : handleNext}
+                  onClick={onFinish}
                   disabled={finishing}
                   className="inline-flex items-center gap-1 h-10 px-6 rounded-md bg-green-600 text-white hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  {isLastPage
-                    ? finishing
-                      ? "Finishing..."
-                      : "Finished"
-                    : "Next"}
+                  {finishing ? "Finishing..." : "Finished"}
                 </button>
               )}
             </>
