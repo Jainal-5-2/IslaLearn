@@ -41,7 +41,7 @@ export default function TopicsPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getTopics(selectedSubject || undefined)
+    getTopics({ subject: selectedSubject ?? undefined })
       .then((data) => {
         if (!cancelled) setTopics(data.results);
       })
