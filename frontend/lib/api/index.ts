@@ -31,6 +31,10 @@ export type {
   Broadcast,
   BroadcastDetail,
   BroadcastParticipant,
+  Session,
+  SessionType,
+  Review,
+  UserReviewsResponse,
 } from "./types";
 
 // Auth
@@ -78,3 +82,11 @@ export {
   cancelBroadcast,
   getBroadcastRoomUrl,
 } from "./broadcasts";
+
+// Sessions & Reviews
+export {
+  completeRequest,
+  completeBroadcast,
+  createReview,
+  getUserReviews,
+} from "./sessions";

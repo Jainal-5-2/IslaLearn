@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { RequestCard } from "@/components/request-card";
 import { SubjectCombobox } from "@/components/subject-combobox";
+import { SessionPanel, ReviewableUser } from "@/components/sessions-panel";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { showToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,14 @@ function RequestDetailPage() {
   const [draftDescription, setDraftDescription] = useState("");
   const [draftDate, setDraftDate] = useState("");
   const [draftTimeOfDay, setDraftTimeOfDay] = useState("");
+
+  function refresh() {
+    getRequest(requestId)
+      .then(setReq)
+      .catch((e) =>
+        showToast(e instanceof Error ? e.message : "Failed to refresh")
+      );
+  }
 
   useEffect(() => {
     Promise.all([getRequest(requestId), getMe(), getSubjects()])
@@ -215,6 +224,29 @@ function RequestDetailPage() {
   const canEdit = isOwner && req.status === "open";
   const canClose = isOwner && req.status === "open";
 
+  const acceptedApplication = req.applications?.find(
+    (a) => a.status === "accepted"
+  );
+  const isAcceptedTutor = acceptedApplication?.tutor.id === user.id;
+
+  // Who can this user review? Only meaningful once a session exists.
+  // For 1:1, the other party: the tutee for the tutor, the tutor for
+  // the tutee. Anyone else gets an empty list, and SessionPanel hides.
+  const reviewableUsers: ReviewableUser[] = [];
+  if (req.session) {
+    if (isOwner && acceptedApplication) {
+      reviewableUsers.push({
+        id: acceptedApplication.tutor.id,
+        username: acceptedApplication.tutor.username,
+      });
+    } else if (isAcceptedTutor) {
+      reviewableUsers.push({
+        id: req.tutee.id,
+        username: req.tutee.username,
+      });
+    }
+  }
+
   const preferredTimePreview = (() => {
     if (!draftDate || !draftTimeOfDay) return null;
     const d = new Date(`${draftDate}T${draftTimeOfDay}`);
@@ -229,7 +261,6 @@ function RequestDetailPage() {
     };
   })();
 
-  // Header action row: pencil + close, only for the owner on an open request.
   const headerActions =
     (canEdit || canClose) && !editing ? (
       <div className="flex items-center gap-1">
@@ -277,7 +308,7 @@ function RequestDetailPage() {
               {req.subject.name}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Locked — {req.applications?.length ?? 0} tutor
+              Locked. {req.applications?.length ?? 0} tutor
               {(req.applications?.length ?? 0) === 1 ? "" : "s"} have applied.
               Close and repost to change the subject.
             </p>
@@ -390,7 +421,8 @@ function RequestDetailPage() {
       {!isOwner && myApplication && (
         <div className="bg-card border border-border rounded-xl p-4 text-sm">
           You applied on{" "}
-          {new Date(myApplication.created_at).toLocaleDateString()} — status:{" "}
+          {new Date(myApplication.created_at).toLocaleDateString()} with
+          status:{" "}
           <span className="font-medium capitalize">
             {myApplication.status}
           </span>
@@ -400,6 +432,28 @@ function RequestDetailPage() {
         <p className="text-sm text-muted-foreground">
           This request is closed.
         </p>
+      )}
+
+      {req.session ? (
+        <SessionPanel
+          kind="request"
+          targetId={req.id}
+          session={req.session}
+          reviewableUsers={reviewableUsers}
+          isTutor={!!isAcceptedTutor}
+          onSessionChanged={refresh}
+        />
+      ) : (
+        acceptedApplication && (
+          <SessionPanel
+            kind="request"
+            targetId={req.id}
+            session={null}
+            reviewableUsers={reviewableUsers}
+            isTutor={!!isAcceptedTutor}
+            onSessionChanged={refresh}
+          />
+        )
       )}
 
       <div className="bg-card border border-border rounded-xl p-6">
@@ -416,9 +470,12 @@ function RequestDetailPage() {
                 className="border border-border rounded-lg p-4 bg-background"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-sm">
+                  <Link
+                    href={`/profile/${a.tutor.id}`}
+                    className="font-medium text-sm hover:text-accent transition-colors"
+                  >
                     {a.tutor.username}
-                  </span>
+                  </Link>
                   <span
                     className={cn(
                       "text-xs px-2 py-1 rounded-md font-medium",

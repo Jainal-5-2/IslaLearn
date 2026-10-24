@@ -23,6 +23,7 @@ import {
   ApiError,
 } from "@/lib/api";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { SessionPanel, ReviewableUser } from "@/components/sessions-panel";
 import { showToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,14 @@ function BroadcastDetailPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  function refresh() {
+    getBroadcast(broadcastId)
+      .then(setBroadcast)
+      .catch((e) =>
+        showToast(e instanceof Error ? e.message : "Failed to refresh")
+      );
+  }
 
   useEffect(() => {
     Promise.all([getBroadcast(broadcastId), getMe()])
@@ -138,6 +147,24 @@ function BroadcastDetailPage() {
   const canLeave = isParticipant && !isCancelled;
   const canEnterRoom = (isTutor || isParticipant) && !isCancelled;
 
+  // Who can this user review? For a broadcast, everyone except
+  // themselves: the tutor plus all participants. The backend re-checks
+  // participants, so this list is only a picker.
+  const reviewableUsers: ReviewableUser[] = [];
+  if (broadcast.session) {
+    if (broadcast.tutor.id !== user.id) {
+      reviewableUsers.push({
+        id: broadcast.tutor.id,
+        username: broadcast.tutor.username,
+      });
+    }
+    for (const p of broadcast.participants) {
+      if (p.user.id !== user.id) {
+        reviewableUsers.push({ id: p.user.id, username: p.user.username });
+      }
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <Link
@@ -178,7 +205,13 @@ function BroadcastDetailPage() {
           {broadcast.title}
         </h1>
         <p className="text-sm text-muted-foreground mb-6">
-          by {broadcast.tutor.username}
+          by{" "}
+          <Link
+            href={`/profile/${broadcast.tutor.id}`}
+            className="hover:text-accent transition-colors"
+          >
+            {broadcast.tutor.username}
+          </Link>
         </p>
 
         {broadcast.description && (
@@ -275,6 +308,28 @@ function BroadcastDetailPage() {
         </div>
       </div>
 
+      {isTutor && !isCancelled && (
+        <SessionPanel
+          kind="broadcast"
+          targetId={broadcast.id}
+          session={broadcast.session ?? null}
+          reviewableUsers={reviewableUsers}
+          isTutor={true}
+          onSessionChanged={refresh}
+        />
+      )}
+
+      {!isTutor && broadcast.session && (
+        <SessionPanel
+          kind="broadcast"
+          targetId={broadcast.id}
+          session={broadcast.session}
+          reviewableUsers={reviewableUsers}
+          isTutor={false}
+          onSessionChanged={refresh}
+        />
+      )}
+
       <div className="bg-card border border-border rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-4">
           Participants ({broadcast.participants.length})
@@ -288,7 +343,12 @@ function BroadcastDetailPage() {
                 key={p.id}
                 className="flex items-center justify-between p-2 rounded-md bg-background border border-border"
               >
-                <span className="text-sm font-medium">{p.user.username}</span>
+                <Link
+                  href={`/profile/${p.user.id}`}
+                  className="text-sm font-medium hover:text-accent transition-colors"
+                >
+                  {p.user.username}
+                </Link>
                 <span className="text-xs text-muted-foreground">
                   joined {new Date(p.joined_at).toLocaleString()}
                 </span>

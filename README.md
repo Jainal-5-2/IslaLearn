@@ -315,10 +315,10 @@ data.
 15. Test the 30-minute meeting cap: see what happens when a meeting hits it and make sure the UI handles it gracefully. Tutees join with camera off by default, since many users have limited bandwidth.
 
 **Phase 5 — Trust & Polish**
-16. Build `Session` + `Review` + `Report` models and API.
-17. Build session-complete flow + review submission + profile reviews.
-18. Build report button.
-19. Polish UI, add empty states, loading states, error handling.
+16. Build `Session` + `Review` + `Report` models and API. `[5a: DONE for Session + Review; Report pending]`
+17. Build session-complete flow + review submission + profile reviews. `[5a: DONE]`
+18. Build report button. `[5b: NOT STARTED]`
+19. Polish UI, add empty states, loading states, error handling. `[5c: NOT STARTED]`
 
 **Phase 6 — Seed & Launch Prep**
 20. Seed 5–10 Topics manually (act as the first tutor).

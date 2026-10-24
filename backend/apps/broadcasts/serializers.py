@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.sessions.serializers import SessionSerializer
 from apps.topics.models import Subject
 from apps.users.serializers import UserSerializer
 
@@ -76,6 +77,7 @@ class BroadcastDetailSerializer(serializers.ModelSerializer):
     is_tutor = serializers.SerializerMethodField()
     my_participation = serializers.SerializerMethodField()
     can_join = serializers.SerializerMethodField()
+    session = serializers.SerializerMethodField()
 
     class Meta:
         model = Broadcast
@@ -95,6 +97,7 @@ class BroadcastDetailSerializer(serializers.ModelSerializer):
             "my_participation",
             "can_join",
             "participants",
+            "session",
             "created_at",
             "updated_at",
         ]
@@ -132,6 +135,12 @@ class BroadcastDetailSerializer(serializers.ModelSerializer):
         if self.get_my_participation(obj):
             return False
         return obj.participants.count() < obj.capacity
+
+    def get_session(self, obj):
+        session = obj.sessions.first()
+        if session is None:
+            return None
+        return SessionSerializer(session, context=self.context).data
 
 
 class BroadcastCreateSerializer(serializers.ModelSerializer):

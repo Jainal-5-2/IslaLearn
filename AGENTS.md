@@ -74,6 +74,26 @@ That belongs in the commit message, not the source.
   code that assumes a broadcast can run longer on the free tier. When a
   session hits the cap the room drops; the page must not look broken.
 
+### Sessions & reviews conventions
+- A `Session` row is created when the tutor marks the underlying
+  Request or Broadcast complete. `Session` stores only the FK to the
+  source; parties are derived through
+  `apps/sessions/parties.py::session_participants`. Do not add
+  `tutor`/`tutee` fields to `Session`; they would drift if the accepted
+  application or participant list changes.
+- Review rule: "anyone review anyone once." Reviewer and reviewee must
+  both be participants in the session; a reviewer may leave at most one
+  review per session (`unique_together`). Enforced in
+  `ReviewCreateSerializer.validate`.
+- Only the tutor can mark a session complete. For 1:1, the accepted
+  tutor. For broadcasts, the broadcasting tutor. A cancelled broadcast
+  cannot be completed.
+- Detail serializers for `Request` and `Broadcast` carry a nested
+  `session` field (null when none). The frontend reads it directly;
+  do not add a separate `GET /sessions/` lookup for this.
+- `/profile/[id]` is the public review page. Reviews link to the
+  reviewer's profile, which links onward.
+
 ### Frontend conventions
 - The detail page (`/topics/[id]`) never redirects. Returning users see
   the detail page with a "Continue reading" button. Do not add a
@@ -123,7 +143,8 @@ That belongs in the commit message, not the source.
 - Phase 2.5: DONE (progress, resume, completion, reset dialog).
 - Phase 3: DONE (requests, applications, accept/reject, close).
 - Phase 4: IN PROGRESS (broadcasts, Whereby Embedded).
-- Phase 5: NOT STARTED (sessions, reviews, reports).
+- Phase 5: IN PROGRESS (5a done: sessions, reviews, profile page. 5b
+  report model and button, 5c polish, both not started).
 - Phase 6: NOT STARTED (seed, launch prep).
 
 ## Known open items

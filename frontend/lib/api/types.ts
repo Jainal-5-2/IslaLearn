@@ -79,6 +79,7 @@ export type TutoringRequest = {
   can_edit?: boolean;
   subject_locked?: boolean;
   my_application_status?: ApplicationStatus | null;
+  session?: Session | null;
   created_at: string;
   updated_at?: string;
 };
@@ -110,4 +111,36 @@ export type BroadcastDetail = Broadcast & {
   is_tutor: boolean;
   can_join: boolean;
   participants: BroadcastParticipant[];
+  session: Session | null;
+};
+
+// ---------- Sessions & Reviews ----------
+export type SessionType = "one_on_one" | "broadcast";
+
+export type Review = {
+  id: number;
+  session: number;
+  reviewer: User;
+  reviewee: User;
+  rating: number;
+  text: string;
+  created_at: string;
+};
+
+export type Session = {
+  id: number;
+  session_type: SessionType;
+  request: number | null;
+  broadcast: number | null;
+  completed_at: string | null;
+  marked_by: number | null;
+  created_at: string;
+  can_review: boolean;
+  my_review: Review | null;
+};
+
+export type UserReviewsResponse = {
+  reviews: Review[];
+  count: number;
+  average_rating: number | null;
 };

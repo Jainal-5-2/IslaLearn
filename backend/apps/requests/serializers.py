@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.sessions.serializers import SessionSerializer
 from apps.topics.models import Subject
 from apps.users.serializers import UserSerializer
 
@@ -61,6 +62,7 @@ class RequestDetailSerializer(serializers.ModelSerializer):
     applications = ApplicationSerializer(many=True, read_only=True)
     can_edit = serializers.SerializerMethodField()
     subject_locked = serializers.SerializerMethodField()
+    session = serializers.SerializerMethodField()
 
     class Meta:
         model = Request
@@ -74,6 +76,7 @@ class RequestDetailSerializer(serializers.ModelSerializer):
             "applications",
             "can_edit",
             "subject_locked",
+            "session",
             "created_at",
             "updated_at",
         ]
@@ -93,6 +96,12 @@ class RequestDetailSerializer(serializers.ModelSerializer):
 
     def get_subject_locked(self, obj):
         return obj.applications.exists()
+
+    def get_session(self, obj):
+        session = obj.sessions.first()
+        if session is None:
+            return None
+        return SessionSerializer(session, context=self.context).data
 
 
 class RequestCreateSerializer(serializers.ModelSerializer):
