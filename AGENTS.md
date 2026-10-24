@@ -143,7 +143,7 @@ That belongs in the commit message, not the source.
 - Phase 2.5: DONE (progress, resume, completion, reset dialog).
 - Phase 3: DONE (requests, applications, accept/reject, close).
 - Phase 4: IN PROGRESS (broadcasts, Whereby Embedded).
-- Phase 5: IN PROGRESS (5a done: sessions, reviews, profile page. 5b
+- Phase 5: IN PROGRESS (5a done: sessions, reviews, profile page. 5b done:
   report model and button, 5c polish, both not started).
 - Phase 6: NOT STARTED (seed, launch prep).
 

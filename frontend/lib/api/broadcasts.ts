@@ -5,10 +5,12 @@ import type { Broadcast, BroadcastDetail } from "./types";
 export async function getBroadcasts(params?: {
   subject?: number;
   past?: boolean;
+  tutor?: number;
 }): Promise<Paginated<Broadcast>> {
   const search = new URLSearchParams();
   if (params?.subject) search.set("subject", String(params.subject));
   if (params?.past) search.set("past", "true");
+  if (params?.tutor) search.set("tutor", String(params.tutor));
   const qs = search.toString();
   const data = await apiFetch<Paginated<Broadcast> | Broadcast[]>(
     `/broadcasts/${qs ? `?${qs}` : ""}`

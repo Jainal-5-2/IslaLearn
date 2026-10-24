@@ -41,6 +41,10 @@ class BroadcastListCreateView(generics.ListCreateAPIView):
         if subject_id:
             queryset = queryset.filter(subject_id=subject_id)
 
+        tutor_id = self.request.query_params.get("tutor")
+        if tutor_id:
+            queryset = queryset.filter(tutor_id=tutor_id)
+
         return queryset.order_by("scheduled_at")
 
     def get_serializer_class(self):
@@ -52,8 +56,6 @@ class BroadcastListCreateView(generics.ListCreateAPIView):
         context = super().get_serializer_context()
         user = self.request.user
         if self.request.method == "GET" and user.is_authenticated:
-            # One query for all "am I in this broadcast" checks, instead
-            # of one per row.
             context["my_participations"] = set(
                 BroadcastParticipant.objects.filter(
                     user=user
@@ -70,8 +72,6 @@ class BroadcastListCreateView(generics.ListCreateAPIView):
             try:
                 room_url = whereby.create_room(broadcast)
             except whereby.WherebyError as exc:
-                # The atomic block rolls back the broadcast row. The
-                # client gets a 502 because the failure is upstream.
                 raise ValidationError({"detail": str(exc)})
             broadcast.room_url = room_url
             broadcast.save(update_fields=["room_url"])
@@ -85,7 +85,6 @@ class BroadcastListCreateView(generics.ListCreateAPIView):
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
-
 
 class BroadcastDetailView(generics.RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]

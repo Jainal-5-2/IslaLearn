@@ -144,3 +144,33 @@ export type UserReviewsResponse = {
   count: number;
   average_rating: number | null;
 };
+
+// ---------- Reports ----------
+export type ReportCategory =
+  | "harassment"
+  | "spam"
+  | "impersonation"
+  | "inappropriate"
+  | "other";
+
+export type Report = {
+  id: number;
+  reporter: string;
+  target_user: number | null;
+  target_topic: number | null;
+  target_broadcast: number | null;
+  category: ReportCategory;
+  reason: string;
+  created_at: string;
+};
+
+export type PublicUser = {
+  id: number;
+  username: string;
+  bio: string;
+  profile_picture: string | null;
+  is_tutor: boolean;
+  is_tutee: boolean;
+  plan: "free" | "paid";
+};
+

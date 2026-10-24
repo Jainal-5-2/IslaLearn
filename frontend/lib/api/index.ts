@@ -19,6 +19,7 @@ export {
 // Types
 export type {
   User,
+  PublicUser,
   Subject,
   Topic,
   TopicPage,
@@ -35,10 +36,15 @@ export type {
   SessionType,
   Review,
   UserReviewsResponse,
+  Report,
+  ReportCategory,
 } from "./types";
 
 // Auth
 export { register, login, getMe, logout } from "./auth";
+
+// Users (public)
+export { getUser } from "./users";
 
 // Subjects
 export { getSubjects } from "./subjects";
@@ -90,3 +96,8 @@ export {
   createReview,
   getUserReviews,
 } from "./sessions";
+
+// Reports
+export { createReport } from "./reports";
+
+

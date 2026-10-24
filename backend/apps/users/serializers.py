@@ -31,9 +31,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         except serializers.ValidationError as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
 
-            # Preserve field-level errors the client can render inline.
-            # Everything else collapses to a generic message so usernames
-            # and other identifiers can't be enumerated.
             passthrough = {}
             for field in ("age_confirmed", "password", "email"):
                 if field in detail:
@@ -69,3 +66,23 @@ class UserSerializer(serializers.ModelSerializer):
             "plan",
         ]
         read_only_fields = ["id", "plan"]
+
+
+class PublicUserSerializer(serializers.ModelSerializer):
+    """
+    Public read shape: everything in UserSerializer except email.
+    Used by the user detail endpoint so anyone can look up a profile
+    by ID without harvesting email addresses.
+    """
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "bio",
+            "profile_picture",
+            "is_tutor",
+            "is_tutee",
+            "plan",
+        ]

@@ -3,15 +3,22 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Star, MessageSquare } from "lucide-react";
+import { Star, BookOpen, Video, MessageSquare } from "lucide-react";
 import {
   getMe,
+  getUser,
   getUserReviews,
+  getTopics,
+  getBroadcasts,
+  PublicUser,
   User,
   Review,
+  Topic,
+  Broadcast,
   ApiError,
 } from "@/lib/api";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { ReportButton } from "@/components/report-button";
 import { cn } from "@/lib/utils";
 
 export default function Page() {
@@ -26,10 +33,12 @@ function ProfilePage() {
   const params = useParams();
   const userId = Number(params.id);
 
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<PublicUser | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [averageRating, setAverageRating] = useState<number | null>(null);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -37,13 +46,19 @@ function ProfilePage() {
     let cancelled = false;
     Promise.all([
       getMe().catch(() => null),
+      getUser(userId),
       getUserReviews(userId),
+      getTopics({ createdBy: userId }),
+      getBroadcasts({ tutor: userId, past: true }),
     ])
-      .then(([me, reviewData]) => {
+      .then(([me, u, reviewData, topicsData, broadcastsData]) => {
         if (cancelled) return;
         setCurrentUser(me);
+        setUser(u);
         setReviews(reviewData.reviews);
         setAverageRating(reviewData.average_rating);
+        setTopics(topicsData.results);
+        setBroadcasts(broadcastsData.results);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -65,10 +80,10 @@ function ProfilePage() {
     return <PageSkeleton variant="list" />;
   }
 
-  if (error) {
+  if (error || !user) {
     return (
       <div className="text-center py-20">
-        <p className="text-red-600 mb-4">{error}</p>
+        <p className="text-red-600 mb-4">{error || "User not found."}</p>
         <Link href="/dashboard" className="text-accent underline">
           Back to dashboard
         </Link>
@@ -77,10 +92,7 @@ function ProfilePage() {
   }
 
   const isSelf = currentUser?.id === userId;
-  const displayName =
-    reviews[0]?.reviewee.username ??
-    reviews[0]?.reviewer.username ??
-    `User #${userId}`;
+  const displayName = user.username;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -96,52 +108,93 @@ function ProfilePage() {
                 This is your profile.
               </p>
             )}
-            {averageRating !== null && (
-              <div className="flex items-center gap-2 mt-3">
-                <Stars rating={averageRating} />
-                <span className="text-sm text-muted-foreground">
-                  {averageRating.toFixed(1)} · {reviews.length}{" "}
-                  {reviews.length === 1 ? "review" : "reviews"}
-                </span>
-              </div>
+            {user.bio && (
+              <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">
+                {user.bio}
+              </p>
             )}
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              {averageRating !== null && (
+                <div className="flex items-center gap-2">
+                  <Stars rating={averageRating} />
+                  <span className="text-sm text-muted-foreground">
+                    {averageRating.toFixed(1)}
+                  </span>
+                </div>
+              )}
+              <Link
+                href={`/profile/${userId}/reviews`}
+                className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline font-medium"
+              >
+                <MessageSquare className="h-4 w-4" />
+                {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
+              </Link>
+              {!isSelf && <ReportButton targetUserId={userId} />}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="bg-card border border-border rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <MessageSquare className="h-5 w-5" />
-          Reviews
+          <BookOpen className="h-5 w-5" />
+          Topics created
         </h2>
-        {reviews.length === 0 ? (
+        {topics.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No reviews yet. Reviews are left after a completed session.
+            No topics created yet.
           </p>
         ) : (
-          <ul className="space-y-3">
-            {reviews.map((review) => (
-              <li
-                key={review.id}
-                className="border border-border rounded-lg p-4 bg-background"
-              >
-                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                  <Link
-                    href={`/profile/${review.reviewer.id}`}
-                    className="text-sm font-medium hover:text-accent transition-colors"
-                  >
-                    {review.reviewer.username}
-                  </Link>
-                  <Stars rating={review.rating} size="sm" />
-                </div>
-                {review.text && (
-                  <p className="text-sm whitespace-pre-wrap mb-2">
-                    {review.text}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {new Date(review.created_at).toLocaleDateString()}
-                </p>
+          <ul className="space-y-2">
+            {topics.map((t) => (
+              <li key={t.id}>
+                <Link
+                  href={`/topics/${t.id}`}
+                  className="flex items-center justify-between gap-2 p-3 rounded-md bg-background border border-border hover:border-accent/40 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{t.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t.subject.name} · {t.page_count} pages
+                    </p>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-6">
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Video className="h-5 w-5" />
+          Broadcasts hosted
+        </h2>
+        {broadcasts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No broadcasts hosted yet.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {broadcasts.map((b) => (
+              <li key={b.id}>
+                <Link
+                  href={`/broadcasts/${b.id}`}
+                  className="flex items-center justify-between gap-2 p-3 rounded-md bg-background border border-border hover:border-accent/40 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{b.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {b.subject.name} ·{" "}
+                      {new Date(b.scheduled_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  {b.is_cancelled && (
+                    <span className="text-xs font-medium px-2 py-1 bg-red-500/10 text-red-600 rounded-md shrink-0">
+                      Cancelled
+                    </span>
+                  )}
+                </Link>
               </li>
             ))}
           </ul>

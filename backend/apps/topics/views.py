@@ -49,6 +49,10 @@ class TopicListCreateView(generics.ListCreateAPIView):
         if subject_id:
             queryset = queryset.filter(subject_id=subject_id)
 
+        created_by = self.request.query_params.get("created_by")
+        if created_by:
+            queryset = queryset.filter(created_by_id=created_by)
+
         if self.request.user.is_authenticated:
             queryset = queryset.filter(
                 Q(is_published=True) | Q(created_by=self.request.user)
@@ -134,9 +138,7 @@ class TopicPageListCreateView(generics.ListCreateAPIView):
         context = super().get_serializer_context()
         if self.request.method == "GET":
             topic = self.get_topic()
-            context["progress_by_topic"] = _progress_map_for(
-                self.request.user, [topic]
-            )
+            context["progress_by_topic"] = _progress_map_for(self.request.user, [topic])
         return context
 
     def get_queryset(self):
@@ -170,9 +172,7 @@ class TopicPageDetailView(generics.RetrieveUpdateDestroyAPIView):
                 topic = Topic.objects.get(id=topic_id)
             except Topic.DoesNotExist:
                 raise NotFound("Topic not found.")
-            context["progress_by_topic"] = _progress_map_for(
-                self.request.user, [topic]
-            )
+            context["progress_by_topic"] = _progress_map_for(self.request.user, [topic])
         return context
 
     def get_queryset(self):
@@ -293,9 +293,7 @@ class TopicUnlockView(APIView):
             raise NotFound("Topic not found.")
 
         if topic.created_by_id == request.user.id:
-            raise ValidationError(
-                "Topic creators cannot unlock their own topics."
-            )
+            raise ValidationError("Topic creators cannot unlock their own topics.")
 
         if not topic.is_published:
             raise PermissionDenied("You cannot unlock this topic.")
