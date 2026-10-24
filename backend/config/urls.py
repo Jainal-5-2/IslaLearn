@@ -9,8 +9,9 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.users.urls')),
-    path('api/', include('apps.topics.urls')), 
+    path('api/', include('apps.topics.urls')),
     path('api/', include('apps.requests.urls')),
+    path('api/', include('apps.broadcasts.urls')),
 ]
 
 # Serve media files during development (for profile pictures, etc.)

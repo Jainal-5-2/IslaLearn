@@ -1,0 +1,185 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { Plus, Calendar, Users } from "lucide-react";
+import {
+  getSubjects,
+  getBroadcasts,
+  Subject,
+  Broadcast,
+} from "@/lib/api";
+import { SubjectCombobox } from "@/components/subject-combobox";
+import { PageSkeleton } from "@/components/page-skeleton";
+import { cn } from "@/lib/utils";
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+};
+
+export default function Page() {
+  return (
+    <Suspense fallback={<PageSkeleton variant="list" />}>
+      <BroadcastsPage />
+    </Suspense>
+  );
+}
+
+function BroadcastsPage() {
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+  const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getSubjects()
+      .then(setSubjects)
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Failed to load subjects")
+      );
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getBroadcasts({ subject: selectedSubject ?? undefined })
+      .then((data) => {
+        if (!cancelled) setBroadcasts(data.results);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSubject]);
+
+  return (
+    <>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">Broadcasts</h1>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
+            Upcoming group sessions from your peers
+          </p>
+        </div>
+        <Link
+          href="/broadcasts/new"
+          className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors w-full sm:w-auto"
+        >
+          <Plus className="h-4 w-4" />
+          Schedule broadcast
+        </Link>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+        <SubjectCombobox
+          subjects={subjects}
+          value={selectedSubject}
+          onChange={setSelectedSubject}
+        />
+        {!loading && (
+          <p className="text-sm text-muted-foreground">
+            {broadcasts.length}{" "}
+            {broadcasts.length === 1 ? "broadcast" : "broadcasts"}
+          </p>
+        )}
+      </div>
+
+      {error && (
+        <p className="text-red-600 bg-red-500/10 p-3 rounded-lg mb-6">{error}</p>
+      )}
+
+      {loading ? (
+        <PageSkeleton variant="list" />
+      ) : broadcasts.length === 0 ? (
+        <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
+          <h3 className="text-lg font-semibold mb-2">No upcoming broadcasts</h3>
+          <p className="text-muted-foreground mb-6">
+            {selectedSubject
+              ? "Nothing scheduled for this subject yet."
+              : "The community hasn't scheduled anything yet."}
+          </p>
+          <Link
+            href="/broadcasts/new"
+            className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+          >
+            Schedule the first broadcast
+          </Link>
+        </div>
+      ) : (
+        <motion.div
+          className="space-y-3"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {broadcasts.map((b) => (
+            <motion.div key={b.id} variants={itemVariants}>
+              <BroadcastCard broadcast={b} />
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
+    </>
+  );
+}
+
+function BroadcastCard({ broadcast }: { broadcast: Broadcast }) {
+  const isFull = broadcast.is_full;
+  const joined = !!broadcast.my_participation;
+
+  return (
+    <Link
+      href={`/broadcasts/${broadcast.id}`}
+      className="block bg-card border border-border rounded-xl p-5 hover:shadow-md hover:border-accent/40 transition-all"
+    >
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
+          {broadcast.subject.name}
+        </span>
+        {joined && (
+          <span className="text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
+            Joined
+          </span>
+        )}
+        {isFull && !joined && (
+          <span className="text-xs font-medium px-2 py-1 bg-muted text-muted-foreground rounded-md">
+            Full
+          </span>
+        )}
+      </div>
+      <h2 className="text-lg font-bold mb-1">{broadcast.title}</h2>
+      {broadcast.description && (
+        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+          {broadcast.description}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <Calendar className="h-3.5 w-3.5" />
+          {new Date(broadcast.scheduled_at).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Users className="h-3.5 w-3.5" />
+          {broadcast.participant_count} / {broadcast.capacity}
+        </span>
+        <span>by {broadcast.tutor.username}</span>
+      </div>
+    </Link>
+  );
+}

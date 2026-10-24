@@ -40,9 +40,9 @@ A **Broadcast** is a scheduled group session offered by a tutor on a specific Su
 
 - A title, description, and datetime
 - A maximum capacity
-- An in-app video room (powered by **Daily.co**)
+- An in-app video room (powered by **Whereby Embedded**)
 
-Tutees browse upcoming broadcasts and **join** if there's space. On the session date, they enter the Daily.co room directly from the platform — no external links, no Zoom setup.
+Tutees browse upcoming broadcasts and **join** if there's space. On the session date, they enter the video room directly from the platform — no external links, no Zoom setup.
 
 #### 3. Requests (1:1 Live Tutoring)
 
@@ -54,7 +54,7 @@ A **Request** is posted by a tutee who needs help with a specific Subject/Topic.
 
 Tutors browse open requests and **apply** with a message. The tutee reviews applications and **accepts one**. The accepted tutor then shares an **external meeting link** (Zoom/Meet/Whereby) for the 1:1 session.
 
-> **Why external links for 1:1 but Daily.co for group?** Group calls need real infrastructure (SFU, scaling) — external links are clunky for N participants. 1:1 calls work perfectly fine with a shared link, and skipping the integration saves weeks of work. Daily.co handles group; external links handle 1:1.
+> **Why external links for 1:1 but an embedded room for group?** Group calls need real infrastructure (SFU, scaling) — external links are clunky for N participants. 1:1 calls work perfectly fine with a shared link, and skipping the integration saves weeks of work. Whereby Embedded handles group; external links handle 1:1.
 
 ### Trust & Safety
 
@@ -82,8 +82,10 @@ Tutors browse open requests and **apply** with a message. The tutee reviews appl
 | **Backend** | Django + Django REST Framework |
 | **Database** | MySQL |
 | **Auth** | JWT (`djangorestframework-simplejwt`) |
-| **Video (group)** | Daily.co (React SDK + REST API for room creation) |
+| **Video (group)** | Whereby Embedded (iframe embed, room creation via server-side REST call) |
 | **Video (1:1)** | External link (Zoom/Meet/Whereby) |
+
+**Video provider note:** Daily.co was dropped because it requires a credit card at signup. Whereby Embedded is the chosen provider because its free Explore plan needs no card to try (verify at signup). The accepted tradeoffs on the free plan are a **30-minute limit per meeting** and **2,000 participant-minutes per month**. The room reference is stored provider-neutrally (`room_provider`, `room_url`) so the provider can be swapped later without a schema change. Pricing and limits change often; re-check Whereby's Embedded pricing page before launch.
 
 ### Architecture
 
@@ -94,9 +96,9 @@ Next.js (localhost:3000)
         │  JWT-authenticated fetch
         ▼
 Django REST API (localhost:8000)
-        │
-        ▼
-     MySQL
+        │                     │
+        ▼                     ▼
+     MySQL            Whereby API (room creation)
 ```
 
 CORS is configured to allow the Next.js origin during development.
@@ -140,7 +142,8 @@ Application
 
 Broadcast (group supply)
   - tutor (FK User), subject (FK), title, description
-  - scheduled_at, capacity, daily_room_url
+  - scheduled_at, capacity
+  - room_provider, room_url     ← provider-neutral (was daily_room_url)
   - participants → BroadcastParticipant[]
 
 BroadcastParticipant
@@ -162,6 +165,7 @@ Report
 **Schema hooks for the future** (present from day one, unused in v1):
 - `User.plan` and `User.payout_account_id` — for freemium + Stripe Connect
 - `Topic.free_page_count` — for content gating
+- `Broadcast.room_provider` — lets the video provider change without redefining the field's meaning
 - `SessionActivity` (deferred model) — for in-call quizzes/polls
 - `Enrollment` (deferred model) — for paid topic access
 
@@ -198,10 +202,13 @@ Requests (1:1)
 
 Broadcasts (group)
   GET    /api/broadcasts/          (browse upcoming)
-  POST   /api/broadcasts/          (create — tutor; creates Daily room)
+  POST   /api/broadcasts/          (create — tutor; creates Whereby room)
   GET    /api/broadcasts/{id}/
   POST   /api/broadcasts/{id}/join/ (tutee joins; checks capacity)
   DELETE /api/broadcasts/{id}/leave/
+  GET    /api/broadcasts/{id}/room-url/  (tutor and joined participants only;
+                                          the URL is the access grant, so the
+                                          backend check is the gate)
 
 Sessions & Reviews
   POST   /api/sessions/{id}/complete/    (mark complete)
@@ -233,7 +240,7 @@ Reports
 /broadcasts                 → Browse upcoming broadcasts
 /broadcasts/new             → Create broadcast (tutor)
 /broadcasts/[id]            → Broadcast detail + join button
-/broadcasts/[id]/room       → Live Daily.co room (participants only)
+/broadcasts/[id]/room       → Live video room (participants only)
 
 /dashboard                  → My profile, my topics, my requests, my broadcasts, my sessions
 /profile/[id]               → Public profile + reviews
@@ -302,27 +309,29 @@ data.
 11. Build accept/reject flow.
 
 **Phase 4 — Supply Flow (Broadcasts)**
-12. Integrate Daily.co: room creation API + React SDK.
-13. Build `Broadcast` + `BroadcastParticipant` models and API.
-14. Build broadcast browse/create/join pages + live room page.
+12. Integrate Whereby Embedded: create an account on the Explore plan (no card), store the API key in Django env (server-side only), and build a small backend service that creates a meeting and returns its URL.
+13. Build `Broadcast` + `BroadcastParticipant` models and API, including `room-url` with tutor/participant-only access.
+14. Build broadcast browse/create/join pages + live room page (iframe embed inside a single `BroadcastRoom` component).
+15. Test the 30-minute meeting cap: see what happens when a meeting hits it and make sure the UI handles it gracefully. Tutees join with camera off by default, since many users have limited bandwidth.
 
 **Phase 5 — Trust & Polish**
-15. Build `Session` + `Review` + `Report` models and API.
-16. Build session-complete flow + review submission + profile reviews.
-17. Build report button.
-18. Polish UI, add empty states, loading states, error handling.
+16. Build `Session` + `Review` + `Report` models and API.
+17. Build session-complete flow + review submission + profile reviews.
+18. Build report button.
+19. Polish UI, add empty states, loading states, error handling.
 
 **Phase 6 — Seed & Launch Prep**
-19. Seed 5–10 Topics manually (act as the first tutor).
-20. Schedule 2–3 Broadcasts manually to make the platform feel alive.
-21. Invite 10–20 BaSU CS classmates to test.
-22. Write a simple privacy policy and ToS (18+ checkbox text).
+20. Seed 5–10 Topics manually (act as the first tutor).
+21. Schedule 2–3 Broadcasts manually to make the platform feel alive. Keep each under 30 minutes on the free plan and track participant-minutes against the 2,000 monthly allowance.
+22. Invite 10–20 BaSU CS classmates to test.
+23. Write a simple privacy policy and ToS (18+ checkbox text).
 
 ### Explicitly Deferred (v2+)
 
 - Payments / Stripe / PayMongo + `Enrollment` model
 - Freemium feature gating (beyond content preview)
-- Custom WebRTC / SFU (Daily.co handles it for now)
+- Whereby 30-minute per-meeting cap: move to a paid Whereby plan or another provider (for example VideoSDK) before sessions longer than 30 minutes
+- Custom WebRTC / SFU (Whereby handles it for now)
 - In-call quizzes/polls (`SessionActivity`)
 - Automated matching algorithm
 - Real age/student verification

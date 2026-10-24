@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'apps.users',
     'apps.topics',
     'apps.requests',
+    'apps.broadcasts',
 ]
 
 MIDDLEWARE = [
@@ -200,3 +201,11 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# ---------------------------------------------------------------------------
+# Whereby (Broadcasts)
+# ---------------------------------------------------------------------------
+WHEREBY_API_KEY = env("WHEREBY_API_KEY", default="")
+WHEREBY_API_URL = env(
+    "WHEREBY_API_URL", default="https://api.whereby.dev/v1/meetings"
+)

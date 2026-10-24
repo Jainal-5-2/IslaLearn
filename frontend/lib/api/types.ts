@@ -82,3 +82,32 @@ export type TutoringRequest = {
   created_at: string;
   updated_at?: string;
 };
+
+// ---------- Broadcasts ----------
+export type BroadcastParticipant = {
+  id: number;
+  user: User;
+  joined_at: string;
+};
+
+export type Broadcast = {
+  id: number;
+  tutor: User;
+  subject: Pick<Subject, "id" | "name">;
+  title: string;
+  description: string;
+  scheduled_at: string;
+  duration_minutes: number;
+  capacity: number;
+  participant_count: number;
+  is_full: boolean;
+  is_cancelled: boolean;
+  my_participation?: boolean;
+  created_at: string;
+};
+
+export type BroadcastDetail = Broadcast & {
+  is_tutor: boolean;
+  can_join: boolean;
+  participants: BroadcastParticipant[];
+};
