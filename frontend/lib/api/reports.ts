@@ -5,6 +5,7 @@ export async function createReport(data: {
   target_user?: number;
   target_topic?: number;
   target_broadcast?: number;
+  target_request?: number;
   category: ReportCategory;
   reason?: string;
 }): Promise<Report> {
@@ -13,4 +14,3 @@ export async function createReport(data: {
     body: JSON.stringify(data),
   });
 }
-

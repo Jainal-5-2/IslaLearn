@@ -17,7 +17,8 @@ const CATEGORIES: { value: ReportCategory; label: string }[] = [
 export type ReportTarget =
   | { target_user: number }
   | { target_topic: number }
-  | { target_broadcast: number };
+  | { target_broadcast: number }
+  | { target_request: number };
 
 export function ReportButton({
   target,

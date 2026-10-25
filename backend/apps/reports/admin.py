@@ -11,6 +11,7 @@ class ReportAdmin(admin.ModelAdmin):
         "target_user",
         "target_topic",
         "target_broadcast",
+        "target_request",
         "category",
         "created_at",
     )
@@ -20,6 +21,8 @@ class ReportAdmin(admin.ModelAdmin):
         "target_user__username",
         "target_topic__title",
         "target_broadcast__title",
+        "target_request__description",
+        "target_request__tutee__username",
         "reason",
     )
     readonly_fields = (
@@ -27,6 +30,7 @@ class ReportAdmin(admin.ModelAdmin):
         "target_user",
         "target_topic",
         "target_broadcast",
+        "target_request",
         "category",
         "reason",
         "created_at",

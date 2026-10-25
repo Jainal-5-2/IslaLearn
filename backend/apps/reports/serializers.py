@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.broadcasts.models import Broadcast
+from apps.requests.models import Request as TutoringRequest
 from apps.topics.models import Topic
 from apps.users.models import User
 
@@ -11,10 +12,10 @@ class ReportCreateSerializer(serializers.Serializer):
     """
     Input for POST /api/reports/.
 
-    Exactly one of target_user, target_topic, target_broadcast must be
-    provided. The model's check constraint is the backstop; this
-    serializer is the friendly error. Reason is required when category
-    is "other" and optional otherwise.
+    Exactly one of target_user, target_topic, target_broadcast,
+    target_request must be provided. The model's check constraint is
+    the backstop; this serializer is the friendly error. Reason is
+    required when category is "other" and optional otherwise.
     """
 
     target_user = serializers.PrimaryKeyRelatedField(
@@ -26,6 +27,11 @@ class ReportCreateSerializer(serializers.Serializer):
     target_broadcast = serializers.PrimaryKeyRelatedField(
         queryset=Broadcast.objects.all(), required=False, allow_null=True
     )
+    target_request = serializers.PrimaryKeyRelatedField(
+        queryset=TutoringRequest.objects.all(),
+        required=False,
+        allow_null=True,
+    )
     category = serializers.ChoiceField(choices=Report.CATEGORY_CHOICES)
     reason = serializers.CharField(required=False, allow_blank=True)
 
@@ -34,11 +40,12 @@ class ReportCreateSerializer(serializers.Serializer):
             attrs.get("target_user"),
             attrs.get("target_topic"),
             attrs.get("target_broadcast"),
+            attrs.get("target_request"),
         ]
         provided = [t for t in targets if t is not None]
         if len(provided) != 1:
             raise serializers.ValidationError(
-                "Provide exactly one target: user, topic, or broadcast."
+                "Provide exactly one target: user, topic, broadcast, or request."
             )
 
         category = attrs["category"]
@@ -79,6 +86,7 @@ class ReportSerializer(serializers.ModelSerializer):
             "target_user",
             "target_topic",
             "target_broadcast",
+            "target_request",
             "category",
             "reason",
             "created_at",

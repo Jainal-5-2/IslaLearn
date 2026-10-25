@@ -20,6 +20,7 @@ import { RequestCard } from "@/components/request-card";
 import { SubjectCombobox } from "@/components/subject-combobox";
 import { SessionPanel, ReviewableUser } from "@/components/sessions-panel";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { ReportButton } from "@/components/report-button";
 import { showToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
@@ -230,8 +231,6 @@ function RequestDetailPage() {
   const isAcceptedTutor = acceptedApplication?.tutor.id === user.id;
 
   // Who can this user review? Only meaningful once a session exists.
-  // For 1:1, the other party: the tutee for the tutor, the tutor for
-  // the tutee. Anyone else gets an empty list, and SessionPanel hides.
   const reviewableUsers: ReviewableUser[] = [];
   if (req.session) {
     if (isOwner && acceptedApplication) {
@@ -410,28 +409,39 @@ function RequestDetailPage() {
         </div>
       )}
 
-      {canApply && (
-        <Link
-          href={`/requests/${req.id}/apply`}
-          className="block w-full text-center h-11 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 leading-[2.75rem] transition-colors"
-        >
-          Apply to help
-        </Link>
-      )}
-      {!isOwner && myApplication && (
-        <div className="bg-card border border-border rounded-xl p-4 text-sm">
-          You applied on{" "}
-          {new Date(myApplication.created_at).toLocaleDateString()} with
-          status:{" "}
-          <span className="font-medium capitalize">
-            {myApplication.status}
-          </span>
+      {/* Non-owner actions: apply / applied / closed notice, plus the
+          report button. The report button renders in every non-owner
+          state, regardless of status or whether this user applied. */}
+      {!isOwner && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          {canApply && (
+            <Link
+              href={`/requests/${req.id}/apply`}
+              className="flex-1 text-center h-11 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 leading-[2.75rem] transition-colors"
+            >
+              Apply to help
+            </Link>
+          )}
+          {myApplication && (
+            <div className="flex-1 bg-card border border-border rounded-xl p-4 text-sm">
+              You applied on{" "}
+              {new Date(myApplication.created_at).toLocaleDateString()} with
+              status:{" "}
+              <span className="font-medium capitalize">
+                {myApplication.status}
+              </span>
+            </div>
+          )}
+          {req.status === "closed" && !myApplication && (
+            <p className="flex-1 text-sm text-muted-foreground">
+              This request is closed.
+            </p>
+          )}
+          <ReportButton
+            target={{ target_request: req.id }}
+            label="Report request"
+          />
         </div>
-      )}
-      {req.status === "closed" && !isOwner && !myApplication && (
-        <p className="text-sm text-muted-foreground">
-          This request is closed.
-        </p>
       )}
 
       {req.session ? (

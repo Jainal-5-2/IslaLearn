@@ -159,6 +159,7 @@ export type Report = {
   target_user: number | null;
   target_topic: number | null;
   target_broadcast: number | null;
+  target_request: number | null;
   category: ReportCategory;
   reason: string;
   created_at: string;
