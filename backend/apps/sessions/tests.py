@@ -3,6 +3,8 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
+from django.db import models
+from rest_framework import status as drf_status
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -351,3 +353,156 @@ class UserReviewsTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 0)
         self.assertIsNone(response.data["average_rating"])
+        
+class SessionListTests(APITestCase):
+    """
+    GET /api/sessions/
+
+    Invariants:
+      - Anonymous gets 401.
+      - A user sees 1:1 sessions where they are the tutee or the accepted tutor.
+      - A user sees broadcast sessions where they are the tutor or a participant.
+      - A user does not see sessions they are not a party to.
+      - Filtering by ?type= works.
+      - `other_parties` excludes the requester.
+    """
+
+    def setUp(self):
+        self.tutor = User.objects.create_user(
+            username="tutor", password="pass-t-1", email="t@example.com"
+        )
+        self.tutee = User.objects.create_user(
+            username="tutee", password="pass-u-1", email="u@example.com"
+        )
+        self.outsider = User.objects.create_user(
+            username="outsider", password="pass-o-1", email="o@example.com"
+        )
+        self.subject = Subject.objects.create(name="Python")
+
+        self.req = _make_request_with_accepted_tutor(
+            self.tutee, self.tutor, self.subject
+        )
+        self.one_on_one = Session.objects.create(
+            session_type="one_on_one",
+            request=self.req,
+            completed_at=timezone.now(),
+            marked_by=self.tutor,
+        )
+
+        self.broadcast = Broadcast.objects.create(
+            tutor=self.tutor,
+            subject=self.subject,
+            title="Sorting",
+            scheduled_at=timezone.now() - timedelta(hours=2),
+            room_url="https://whereby.example/room",
+        )
+        BroadcastParticipant.objects.create(
+            broadcast=self.broadcast, user=self.tutee
+        )
+        self.broadcast_session = Session.objects.create(
+            session_type="broadcast",
+            broadcast=self.broadcast,
+            completed_at=timezone.now(),
+            marked_by=self.tutor,
+        )
+
+        self.url = reverse("session-list")
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_anonymous_rejected(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_tutee_sees_one_on_one(self):
+        self._login(self.tutee)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(self.one_on_one.id, ids)
+
+    def test_tutor_sees_one_on_one(self):
+        self._login(self.tutor)
+        response = self.client.get(self.url)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(self.one_on_one.id, ids)
+
+    def test_participant_sees_broadcast(self):
+        self._login(self.tutee)
+        response = self.client.get(self.url)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(self.broadcast_session.id, ids)
+
+    def test_outsider_sees_nothing(self):
+        self._login(self.outsider)
+        response = self.client.get(self.url)
+        self.assertEqual(response.data["count"], 0)
+
+    def test_type_filter(self):
+        self._login(self.tutee)
+        response = self.client.get(self.url, {"type": "one_on_one"})
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertEqual(ids, [self.one_on_one.id])
+
+    def test_other_parties_excludes_requester(self):
+        self._login(self.tutee)
+        response = self.client.get(self.url, {"type": "one_on_one"})
+        row = response.data["results"][0]
+        other_ids = [u["id"] for u in row["other_parties"]]
+        self.assertNotIn(self.tutee.id, other_ids)
+        self.assertIn(self.tutor.id, other_ids)
+
+
+class SessionDetailTests(APITestCase):
+    """
+    GET /api/sessions/{id}/
+
+    Invariants:
+      - Anonymous gets 401.
+      - A party can view.
+      - An outsider gets 404 (queryset filters it out).
+      - source_link points at the request or broadcast.
+    """
+
+    def setUp(self):
+        self.tutor = User.objects.create_user(
+            username="tutor", password="pass-t-1", email="t@example.com"
+        )
+        self.tutee = User.objects.create_user(
+            username="tutee", password="pass-u-1", email="u@example.com"
+        )
+        self.outsider = User.objects.create_user(
+            username="outsider", password="pass-o-1", email="o@example.com"
+        )
+        self.subject = Subject.objects.create(name="Python")
+        req = _make_request_with_accepted_tutor(
+            self.tutee, self.tutor, self.subject
+        )
+        self.session = Session.objects.create(
+            session_type="one_on_one",
+            request=req,
+            completed_at=timezone.now(),
+            marked_by=self.tutor,
+        )
+        self.url = reverse("session-detail", args=[self.session.id])
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_anonymous_rejected(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_party_can_view(self):
+        self._login(self.tutee)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["source_link"], f"/requests/{self.session.request_id}"
+        )
+
+    def test_outsider_gets_404(self):
+        self._login(self.outsider)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

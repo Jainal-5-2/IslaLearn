@@ -122,3 +122,99 @@ class SessionSerializer(serializers.ModelSerializer):
         if review is None:
             return None
         return ReviewSerializer(review).data
+
+
+def _other_party(session, user):
+    """
+    The participants on the other side of the session from `user`.
+    For 1:1 this is a single user; for a broadcast it is the tutor plus
+    the other participants. The queryset already excludes sessions the
+    user is not a party to, so this never returns an empty list for a
+    visible session.
+    """
+    parties = session_participants(session)
+    return [p for p in parties if p.id != user.id]
+
+
+class SessionListSerializer(serializers.ModelSerializer):
+    """
+    List shape for GET /api/sessions/. Adds `other_parties` and a small
+    source summary so the /sessions page can render a row without a
+    second fetch.
+    """
+
+    other_parties = serializers.SerializerMethodField()
+    source_title = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Session
+        fields = [
+            "id",
+            "session_type",
+            "request",
+            "broadcast",
+            "source_title",
+            "other_parties",
+            "completed_at",
+            "created_at",
+        ]
+
+    def _user(self):
+        request = self.context.get("request")
+        return getattr(request, "user", None)
+
+    def get_other_parties(self, obj):
+        user = self._user()
+        if user is None or not user.is_authenticated:
+            return []
+        return [{"id": u.id, "username": u.username} for u in _other_party(obj, user)]
+
+    def get_source_title(self, obj):
+        if obj.session_type == "one_on_one" and obj.request_id is not None:
+            return obj.request.subject.name
+        if obj.session_type == "broadcast" and obj.broadcast_id is not None:
+            return obj.broadcast.title
+        return ""
+
+
+class SessionDetailSerializer(SessionSerializer):
+    """
+    Detail shape for GET /api/sessions/{id}/. Extends SessionSerializer
+    with the source summary and the same `other_parties` list as the
+    list serializer.
+    """
+
+    other_parties = serializers.SerializerMethodField()
+    source_title = serializers.SerializerMethodField()
+    source_link = serializers.SerializerMethodField()
+
+    class Meta(SessionSerializer.Meta):
+        fields = SessionSerializer.Meta.fields + [
+            "other_parties",
+            "source_title",
+            "source_link",
+        ]
+
+    def _user(self):
+        request = self.context.get("request")
+        return getattr(request, "user", None)
+
+    def get_other_parties(self, obj):
+        user = self._user()
+        if user is None or not user.is_authenticated:
+            return []
+        return [{"id": u.id, "username": u.username} for u in _other_party(obj, user)]
+
+    def get_source_title(self, obj):
+        if obj.session_type == "one_on_one" and obj.request_id is not None:
+            return obj.request.subject.name
+        if obj.session_type == "broadcast" and obj.broadcast_id is not None:
+            return obj.broadcast.title
+        return ""
+
+    def get_source_link(self, obj):
+        if obj.session_type == "one_on_one" and obj.request_id is not None:
+            return f"/requests/{obj.request_id}"
+        if obj.session_type == "broadcast" and obj.broadcast_id is not None:
+            return f"/broadcasts/{obj.broadcast_id}"
+        return None

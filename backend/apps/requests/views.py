@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import models, transaction
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -36,8 +36,25 @@ class RequestListCreateView(generics.ListCreateAPIView):
         elif self.request.method == "GET" and status_filter == "open":
             queryset = queryset.exclude(tutee=self.request.user)
 
-        return queryset
+        # ?accepted=true returns accepted-but-not-completed requests
+        # where the user is either the tutee or the accepted tutor.
+        # The tutor and status conditions MUST live in the same Q so
+        # they constrain the same joined Application row; splitting
+        # them into separate .filter() calls creates two independent
+        # joins and lets a rejected application satisfy the tutor
+        # condition while a different accepted application satisfies
+        # the status condition.
+        if self.request.query_params.get("accepted") == "true":
+            queryset = queryset.filter(status="closed").filter(
+                models.Q(tutee=self.request.user)
+                | models.Q(
+                    applications__tutor=self.request.user,
+                    applications__status="accepted",
+                )
+            ).distinct()
 
+        return queryset
+    
     def get_serializer_class(self):
         if self.request.method == "POST":
             return RequestCreateSerializer

@@ -336,3 +336,90 @@ class RequestListBrowseTests(APITestCase):
     def test_anonymous_is_rejected(self):
         response = self.client.get(reverse("request-list"))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        
+class RequestAcceptedFilterTests(APITestCase):
+    """
+    GET /api/requests/?accepted=true&status=closed
+
+    Invariants:
+      - Tutee of an accepted request sees it.
+      - Accepted tutor sees it.
+      - A tutor who applied but was rejected does not see it.
+      - An unrelated user does not see it.
+      - A pending-only application does not count as accepted.
+    """
+
+    def setUp(self):
+        self.tutee = User.objects.create_user(
+            username="tutee", password="pass-u-1", email="u@example.com"
+        )
+        self.tutor = User.objects.create_user(
+            username="tutor", password="pass-t-1", email="t@example.com"
+        )
+        self.rejected = User.objects.create_user(
+            username="rejected", password="pass-r-1", email="r@example.com"
+        )
+        self.outsider = User.objects.create_user(
+            username="outsider", password="pass-o-1", email="o@example.com"
+        )
+        self.subject = Subject.objects.create(name="Python")
+        self.req = Request.objects.create(
+            tutee=self.tutee,
+            subject=self.subject,
+            description="Help",
+            status="open",
+        )
+        Application.objects.create(
+            request=self.req, tutor=self.tutor, message="yes", status="accepted"
+        )
+        Application.objects.create(
+            request=self.req, tutor=self.rejected, message="no", status="rejected"
+        )
+        self.req.status = "closed"
+        self.req.save(update_fields=["status"])
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_tutee_sees_accepted(self):
+        self._login(self.tutee)
+        response = self.client.get(
+            reverse("request-list"), {"accepted": "true", "status": "closed"}
+        )
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(self.req.id, ids)
+
+    def test_accepted_tutor_sees_accepted(self):
+        self._login(self.tutor)
+        response = self.client.get(
+            reverse("request-list"), {"accepted": "true", "status": "closed"}
+        )
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(self.req.id, ids)
+
+    def test_rejected_tutor_does_not_see(self):
+        self._login(self.rejected)
+        response = self.client.get(
+            reverse("request-list"), {"accepted": "true", "status": "closed"}
+        )
+        self.assertEqual(response.data["count"], 0)
+
+    def test_outsider_does_not_see(self):
+        self._login(self.outsider)
+        response = self.client.get(
+            reverse("request-list"), {"accepted": "true", "status": "closed"}
+        )
+        self.assertEqual(response.data["count"], 0)
+
+    def test_pending_application_is_not_accepted(self):
+        pending = User.objects.create_user(
+            username="pending", password="pass-p-1", email="p@example.com"
+        )
+        Application.objects.create(
+            request=self.req, tutor=pending, message="maybe", status="pending"
+        )
+        self._login(pending)
+        response = self.client.get(
+            reverse("request-list"), {"accepted": "true", "status": "closed"}
+        )
+        self.assertEqual(response.data["count"], 0)

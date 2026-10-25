@@ -3,6 +3,8 @@ from django.urls import path
 from .views import (
     BroadcastCompleteView,
     RequestCompleteView,
+    SessionDetailView,
+    SessionListView,
     SessionReviewCreateView,
     UserReviewsView,
 )
@@ -17,6 +19,16 @@ urlpatterns = [
         "broadcasts/<int:pk>/complete/",
         BroadcastCompleteView.as_view(),
         name="broadcast-complete",
+    ),
+    path(
+        "sessions/",
+        SessionListView.as_view(),
+        name="session-list",
+    ),
+    path(
+        "sessions/<int:pk>/",
+        SessionDetailView.as_view(),
+        name="session-detail",
     ),
     path(
         "sessions/<int:pk>/reviews/",
