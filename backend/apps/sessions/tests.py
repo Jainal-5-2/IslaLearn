@@ -506,3 +506,58 @@ class SessionDetailTests(APITestCase):
         self._login(self.outsider)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        
+class SessionListReviewStateTests(APITestCase):
+    """
+    GET /api/sessions/ — list shape must include can_review and my_review
+    so the /sessions page can split Completed vs Reviewed without an
+    N+1 detail fetch.
+    """
+
+    def setUp(self):
+        self.tutor = User.objects.create_user(
+            username="lstutor", password="pass-lt-1", email="lt@example.com"
+        )
+        self.tutee = User.objects.create_user(
+            username="lstutee", password="pass-lu-1", email="lu@example.com"
+        )
+        self.subject = Subject.objects.create(name="Python")
+        req = _make_request_with_accepted_tutor(
+            self.tutee, self.tutor, self.subject
+        )
+        self.session = Session.objects.create(
+            session_type="one_on_one",
+            request=req,
+            completed_at=timezone.now(),
+            marked_by=self.tutor,
+        )
+        self.url = reverse("session-list")
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_my_review_is_null_when_not_reviewed(self):
+        self._login(self.tutee)
+        response = self.client.get(self.url)
+        row = next(
+            r for r in response.data["results"] if r["id"] == self.session.id
+        )
+        self.assertIsNone(row["my_review"])
+        self.assertTrue(row["can_review"])
+
+    def test_my_review_is_populated_after_review(self):
+        Review.objects.create(
+            session=self.session,
+            reviewer=self.tutee,
+            reviewee=self.tutor,
+            rating=5,
+            text="Great",
+        )
+        self._login(self.tutee)
+        response = self.client.get(self.url)
+        row = next(
+            r for r in response.data["results"] if r["id"] == self.session.id
+        )
+        self.assertIsNotNone(row["my_review"])
+        self.assertEqual(row["my_review"]["rating"], 5)
+        self.assertFalse(row["can_review"])

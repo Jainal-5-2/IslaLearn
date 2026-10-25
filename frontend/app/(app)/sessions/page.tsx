@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen, CheckCircle2, Star, Video } from "lucide-react";
+import { BookOpen, Video } from "lucide-react";
 import {
   getMe,
   getRequests,
@@ -56,40 +56,15 @@ function SessionsPage() {
       .finally(() => setLoading(false));
   }, [router]);
 
-  // The backend list endpoint already filters to completed sessions, but
-  // /sessions does not return my_review in the list shape. To split
-  // Completed vs Reviewed, we need per-session detail. Loading every
-  // detail would be N+1, so instead: treat every session as Completed
-  // in the list, and let the detail page surface the review. The
-  // Reviewed tab is populated only after a detail fetch. For v6 we
-  // accept that Reviewed is driven by the user opening a session; if
-  // they have not opened it, they will see it under Completed.
-  //
-  // To keep the two tabs disjoint and predictable, we use a session
-  // id set kept in localStorage that is populated when the user opens
-  // a session detail and a review is already present. This is a
-  // client-side convenience only; it is not authoritative.
-
-  const [reviewedIds, setReviewedIds] = useState<Set<number>>(new Set());
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem("islalearn.reviewedSessions");
-      if (!raw) return;
-      const arr = JSON.parse(raw) as number[];
-      setReviewedIds(new Set(arr));
-    } catch {
-      // ignore
-    }
-  }, []);
-
+  // Split by the server's answer, not a client-side cache. The list
+  // endpoint now includes my_review per row.
   const completed = useMemo(
-    () => sessions.filter((s) => !reviewedIds.has(s.id)),
-    [sessions, reviewedIds]
+    () => sessions.filter((s) => s.my_review === null),
+    [sessions]
   );
   const reviewed = useMemo(
-    () => sessions.filter((s) => reviewedIds.has(s.id)),
-    [sessions, reviewedIds]
+    () => sessions.filter((s) => s.my_review !== null),
+    [sessions]
   );
 
   if (loading) {

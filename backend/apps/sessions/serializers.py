@@ -138,13 +138,16 @@ def _other_party(session, user):
 
 class SessionListSerializer(serializers.ModelSerializer):
     """
-    List shape for GET /api/sessions/. Adds `other_parties` and a small
-    source summary so the /sessions page can render a row without a
-    second fetch.
+    List shape for GET /api/sessions/. Adds `other_parties`, a small
+    source summary, and the requesting user's review state so the
+    /sessions page can split Completed vs Reviewed without an N+1
+    detail fetch.
     """
 
     other_parties = serializers.SerializerMethodField()
     source_title = serializers.SerializerMethodField()
+    can_review = serializers.SerializerMethodField()
+    my_review = serializers.SerializerMethodField()
 
     class Meta:
         model = Session
@@ -157,6 +160,8 @@ class SessionListSerializer(serializers.ModelSerializer):
             "other_parties",
             "completed_at",
             "created_at",
+            "can_review",
+            "my_review",
         ]
 
     def _user(self):
@@ -176,6 +181,31 @@ class SessionListSerializer(serializers.ModelSerializer):
             return obj.broadcast.title
         return ""
 
+    def get_can_review(self, obj):
+        user = self._user()
+        if user is None or not user.is_authenticated:
+            return False
+        if obj.completed_at is None:
+            return False
+        if user not in session_participants(obj):
+            return False
+        preloaded = self.context.get("my_reviews_by_session")
+        if preloaded is not None:
+            return obj.id not in preloaded
+        return not Review.objects.filter(session=obj, reviewer=user).exists()
+
+    def get_my_review(self, obj):
+        user = self._user()
+        if user is None or not user.is_authenticated:
+            return None
+        preloaded = self.context.get("my_reviews_by_session")
+        if preloaded is not None:
+            review = preloaded.get(obj.id)
+        else:
+            review = Review.objects.filter(session=obj, reviewer=user).first()
+        if review is None:
+            return None
+        return ReviewSerializer(review).data
 
 class SessionDetailSerializer(SessionSerializer):
     """

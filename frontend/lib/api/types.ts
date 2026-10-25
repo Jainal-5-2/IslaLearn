@@ -160,12 +160,12 @@ export type SessionSummary = {
   other_parties: SessionOtherParty[];
   completed_at: string;
   created_at: string;
+  can_review: boolean;
+  my_review: Review | null;
 };
 
 export type SessionDetailData = SessionSummary & {
   source_link: string | null;
-  can_review: boolean;
-  my_review: Review | null;
 };
 
 // ---------- Reports ----------

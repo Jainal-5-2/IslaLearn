@@ -43,29 +43,9 @@ function SessionDetailPage() {
   }
 
   useEffect(() => {
-    refresh();
     setLoading(true);
     getSession(sessionId)
-      .then((s) => {
-        setSession(s);
-        // Record that this session has been reviewed so the /sessions
-        // page's Reviewed tab can split without an N+1 fetch.
-        if (typeof window !== "undefined" && s.my_review) {
-          try {
-            const raw = localStorage.getItem("islalearn.reviewedSessions");
-            const arr: number[] = raw ? JSON.parse(raw) : [];
-            if (!arr.includes(s.id)) {
-              arr.push(s.id);
-              localStorage.setItem(
-                "islalearn.reviewedSessions",
-                JSON.stringify(arr)
-              );
-            }
-          } catch {
-            // ignore
-          }
-        }
-      })
+      .then(setSession)
       .catch((e) => {
         if (e instanceof ApiError && e.status === 404) {
           setError("Session not found.");
