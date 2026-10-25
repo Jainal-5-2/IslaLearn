@@ -320,11 +320,155 @@ data.
 18. Build report button. `[5b: NOT STARTED]`
 19. Polish UI, add empty states, loading states, error handling. `[5c: NOT STARTED]`
 
-**Phase 6 — Seed & Launch Prep**
-20. Seed 5–10 Topics manually (act as the first tutor).
-21. Schedule 2–3 Broadcasts manually to make the platform feel alive. Keep each under 30 minutes on the free plan and track participant-minutes against the 2,000 monthly allowance.
-22. Invite 10–20 BaSU CS classmates to test.
-23. Write a simple privacy policy and ToS (18+ checkbox text).
+**Phase 6 — Session Page**
+
+**Goal:** Give the user one place to see their tutoring engagements: accepted requests in progress, completed ones, and reviewed ones. Read-only list plus a detail view. No messaging, no notifications yet.
+
+**Naming note:** The `Session` model stays untouched. It is the completion record (created when a tutor marks a request or broadcast complete). The `/sessions` URL is fine; the "Active" tab is a query over `Request` + accepted `Application`, not over `Session`. The model does not mean two things.
+
+**Backend:**
+- `GET /api/sessions/` — returns the requesting user's `Session` rows (completed 1:1 and broadcast sessions), each with `other_party`, `session_type`, source id (`request` or `broadcast`), `completed_at`, `can_review`, `my_review`.
+- `GET /api/requests/?accepted=true&mine=false` (or equivalent filter) — returns accepted-but-not-completed requests the user is a party to. This is the "Active" tab's data source. No new model, no new row; the accept state already lives in `Request.status == "closed"` + `Application.status == "accepted"`.
+- No `Session` model change. No migration. Cancel-before-complete lives on `Request` and is handled in Phase 10 (Bug Fixes).
+
+**Frontend:**
+- `/sessions` page with three tabs:
+  - **Active** — accepted requests, no `Session` row yet. Links to the request detail.
+  - **Completed** — `Session` rows where this user has not yet filed a review.
+  - **Reviewed** — `Session` rows where this user has filed a review.
+- `/sessions/[id]` detail page for real `Session` rows. Shows the other party, the source (request or broadcast), `completed_at`, and the review if any. Active engagements are not routed here; the Active tab links to the request detail instead, because a `Session` row does not exist until completion.
+
+**What it does not contain:** messages, notifications, cancel flow, model changes. Those are Phases 7, 8, and 10.
+
+---
+
+**Phase 7 — Messages**
+
+**Goal:** A per-engagement thread between the parties, tied to `Request.status`, closed when the request closes.
+
+**Tying to `Request.status`:**
+- A thread exists for a `Request` that has an accepted `Application`. Thread membership is derived from the request parties: `{request.tutee, accepted_application.tutor}`. No `ThreadParticipant` table.
+- A thread is **open** while `Request.status == "closed"` and no `Session` row exists for that request, and the request is not cancelled. It is **read-only** once a `Session` row exists (completed) or the request is cancelled. You cannot send new messages into a closed thread; you can still read history.
+- This makes the "no messaging when closed" rule mechanical: `Request.status == "closed"` plus no session = open; session exists or request reopened = read-only.
+
+**Backend:**
+- `Thread` model: `request` FK (unique), `created_at`, `closed_at` (null while open). One thread per request, enforced by `unique=True` on the FK. Broadcast threads are a v7 addition.
+- `Message` model: `thread` FK, `sender` FK, `body` (text), `created_at`. `ordering = ["created_at"]`.
+- Thread is created **eagerly** at accept time, in the same `select_for_update` transaction as `ApplicationDecisionView`, so the thread exists the moment the engagement does and the Active tab can show a "Message" button without a race.
+- REST endpoints:
+  - `GET /api/threads/` — the user's threads, with `other_party`, `last_message_at`, `unread_count`.
+  - `GET /api/threads/{id}/messages/` — paginated, newest last.
+  - `POST /api/threads/{id}/messages/` — sender must be a party to the thread's request and the thread must be open.
+
+**Frontend:**
+- `/messages` page: thread list on the left, active thread on the right. Opens at `/messages/[threadId]`. Mobile: one column, back to list.
+- Polling every 3s while a thread is open. **WebSocket is the last step of Phase 7, not the first.** Ship with polling, validate the model, then swap the transport in the same phase. Redis and ASGI changes only land at the WebSocket step.
+
+**Notifications for "message received" are Phase 8, not Phase 7.** Phase 7 creates the message; Phase 8 fans out the notification.
+
+**Decisions:**
+- Thread scoping: request-only in v6, broadcast threads in v7.
+- Membership: derived from request parties, no `ThreadParticipant` table.
+- WebSocket auth: query-string access token in v6, documented log-leak caveat.
+
+---
+
+**Phase 8 — Notifications**
+
+**Goal:** The bell works. Fan out events from the views that already exist, plus from message creation (Phase 7). In-app only, polled.
+
+**Backend:**
+- `Notification` model: `recipient` FK, `actor` FK (nullable for system), `kind` enum (`application_received`, `application_accepted`, `application_rejected`, `session_completed`, `review_received`, `message_received`), `target_type` + `target_id` (or three nullable FKs mirroring `Report`), `read_at` (nullable), `created_at`.
+- Fan-out points, explicit in view bodies (not signals), each inside or after the existing transaction:
+  - `RequestApplyView` → `application_received` to tutee.
+  - `ApplicationDecisionView` → `application_accepted` / `application_rejected` to tutor.
+  - `RequestCompleteView` / `BroadcastCompleteView` → `session_completed` to the other parties.
+  - `SessionReviewCreateView` → `review_received` to reviewee.
+  - `MessageCreateView` (Phase 7) → `message_received` to the other thread party.
+- REST endpoints:
+  - `GET /api/notifications/` — paginated, newest first, with `unread_count`.
+  - `POST /api/notifications/{id}/read/`
+  - `POST /api/notifications/read-all/`
+
+**Frontend:**
+- Bell icon in `AppShell` with unread badge, dropdown of the last 10, "View all" link to `/notifications`.
+- `/notifications` page: full list, mark-as-read per row and mark-all.
+- Polling every 30s from `AppShell`. WebSocket push is optional and not required for Phase 8 to be done.
+
+---
+
+**Phase 9 — Terms, Privacy, and Settings**
+
+**Goal:** Legal pages and, optionally, a minimal Settings page.
+
+**Settings — what it contains, honestly:**
+Ship a Settings page only with what the codebase already supports. No placeholders for features that do not exist.
+- **Profile:** `bio`, `profile_picture`. Requires `PATCH /api/users/me/` (does not exist yet; add it in this phase). `UserSerializer` already exposes both fields, so this is a small backend addition plus a form.
+- **Account:** log out (already in sidebar), links to `/privacy` and `/terms`.
+- **Plan:** read-only display of `user.plan`. No upgrade button; v6 has no payments.
+- **Nothing else.** No notification preferences (Phase 8 is all-or-nothing). No password change (add in v7 if users ask). No email preferences. No theme (already global).
+
+**Minimum viable Phase 9:** ship `/privacy` and `/terms` as static pages with real copy, link them from `Footer` (already linked) and from the register page consent line. Add Settings only if the bio/avatar edit is worth the `PATCH /api/users/me/` addition.
+
+**Frontend:**
+- `frontend/app/(focused)/privacy/page.tsx` — static content, no backend.
+- `frontend/app/(focused)/terms/page.tsx` — static content, no backend.
+- Footer links confirmed.
+- Register page consent line linking to both.
+- Optional `/settings` page.
+
+---
+
+**Phase 10 — Bug Fixes**
+
+**Goal:** The accumulated bugs, including the ones already identified. This is a buffer phase, not a fixed list; expect it to grow while Phases 6-9 are built.
+
+**Known items:**
+- **Broadcast completion as a terminal state.**
+  - `Broadcast.completed_at` (nullable datetime), set in `BroadcastCompleteView` inside the existing `select_for_update`, idempotent.
+  - `BroadcastJoinView`, `BroadcastRoomUrlView`, `BroadcastCancelView` reject on `completed_at is not None`.
+  - Serializers expose `is_completed` (derived) and `completed_at`.
+  - Detail page shows "Completed" badge and "This broadcast has ended"; Cancel and Enter room are hidden.
+  - `/broadcasts` gains a Past tab.
+  - Backfill migration from `Session.completed_at` for existing completed broadcasts.
+  - Tests: join/room-url/cancel on completed → 400, complete sets and does not overwrite `completed_at`, completed appears in past list, cancelled still hidden from past list.
+- **Cancel accepted request.**
+  - `POST /api/requests/{id}/cancel-accepted/` — either party, only while `status == "closed"` and no `Session` row exists.
+  - Flips `Request.status` back to `open`, sets the accepted `Application` back to `pending` (or deletes it), un-rejects the other applications, closes the Phase 7 thread.
+  - Tests: tutee can cancel, tutor can cancel, cannot cancel after `Session` exists, thread becomes read-only.
+- **B1 — topic create response shows locked pages to owner.** `TopicListCreateView.create` builds the read serializer without `progress_by_topic`, so `_progress_for` falls back to a DB query and locks the owner's own pages in the create response. Pass an empty `progress_by_topic` (or the owner's) into the create response context.
+- **B3 — reader finish jump guard.** `handleFinish` POSTs `activePageIndex` after sidebar navigation, which trips the "cannot jump more than one page" backend guard when intermediate pages were never posted. Fix by walking indexes on finish, or drop the guard.
+- **B5 — topic page order collision.** `TopicPageListCreateView.perform_create` uses `pages.length + 1`, which 500s after any delete leaves a gap. Fix with `max(order) + 1`.
+- **Request detail report button in all non-owner states.** Already shipped; list it here so the phase is honest about what it contains. If it is done, it is a note, not a task.
+- Anything else found while building Phases 6-9. Reserve the phase for this; do not pre-close the list.
+
+---
+
+**Phase 11 — Seed & Launch Prep**
+
+**Step 0 — Smoke-test checklist before inviting anyone:**
+- Create a topic with 3 pages (text, video, quiz).
+- Delete page 2, add a new page (this is B5).
+- Read to the end via sidebar (this is B3).
+- Complete the topic.
+- Post a request, apply as a second account, accept.
+- Verify the Session Page Active tab shows it.
+- Send a message on the Phase 7 thread.
+- Verify the Phase 8 bell fires.
+- Mark the request complete, review, verify the Completed tab.
+- Schedule a broadcast, join as a second account, enter the room.
+- Complete the broadcast, verify join/enter are blocked (this is the Phase 10 fix).
+- Cancel a different accepted request and verify the thread goes read-only (this is the Phase 10 cancel flow).
+
+This catches Phase 10 regressions before step 22.
+
+20. Seed 5-10 Topics manually (act as the first tutor).
+
+21. Schedule 2-3 Broadcasts manually to make the platform feel alive. Keep each under 30 minutes on the free plan and track participant-minutes against the 2,000 monthly allowance.
+
+22. Invite 10-20 BaSU CS classmates to test.
+
+23. Review legal copy with a second pair of eyes. (If Phase 9 shipped the pages, this is a review, not a write-from-scratch.)
 
 ### Explicitly Deferred (v2+)
 
