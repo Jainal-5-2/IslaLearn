@@ -103,6 +103,8 @@ export type Broadcast = {
   participant_count: number;
   is_full: boolean;
   is_cancelled: boolean;
+  is_completed: boolean;
+  completed_at: string | null;
   my_participation?: boolean;
   created_at: string;
 };

@@ -423,24 +423,45 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 
 **Goal:** The accumulated bugs, including the ones already identified. This is a buffer phase, not a fixed list; expect it to grow while Phases 6-9 are built.
 
-**Known items:**
+**Status notes (keep this section honest as items close):**
+
+- **B5 — topic page order collision.** Already fixed in the code. `TopicPageListCreateView.perform_create` computes the next order as `last_page.order + 1` over the highest-order page, not `pages.length + 1`, so a gap left by a delete does not collide. No action needed; the earlier description was stale. A regression test that deletes a middle page and then adds a new one would be cheap insurance if this phase is otherwise short on work.
+- **Request detail report button.** Already shipped. `ReportButton` is rendered in every non-owner state on `/requests/[id]`. Note, not task.
+- **1:1 completion is tutee-only.** Shipped as part of the messaging phase. `RequestCompleteView` rejects anyone but the tutee with 403 and records `marked_by` as the tutee. The tutor-side gap (a ghosting tutee leaves an unclosed engagement) is documented under "Known limitations." No further work in this phase unless the gap is promoted from a known limitation to a bug, which it is not.
+
+**Open items:**
+
+- **B1 — topic create response shows locked pages to owner.**
+  - Symptom: `POST /api/topics/` returns `TopicDetailSerializer` with a `progress_by_topic` context that `TopicListCreateView.create` never populates. `TopicPageSerializer._progress_for` then falls back to a DB query, finds no progress for the owner (owners do not get progress rows), and marks pages past `free_page_count` as locked. The owner sees their own pages locked in the create response.
+  - Fix: in `TopicListCreateView.create`, build the read serializer context with `progress_by_topic = {}` before constructing `TopicDetailSerializer`. An empty dict tells `_progress_for` "the owner has no progress" without a DB query, and `TopicPageSerializer.get_is_locked` short-circuits to `False` for `request.user == obj.topic.created_by` before consulting progress anyway.
+  - Test: as the owner, `POST /api/topics/` with a topic that will have more than `free_page_count` pages; assert every page in the response has `is_locked: false` and a non-empty `content`. The current test suite does not cover the create response's page shape.
+
+- **B3 — reader finish jump guard.**
+  - Symptom: `handleFinish` in `app/(focused)/topics/[id]/read/page.tsx` POSTs `recordProgress(topic.id, activePageIndex)`. When the user reached the last page via the sidebar after navigating backward or jumping around, `activePageIndex` is higher than the stored `last_page_index + 1`, and `TopicProgressView` rejects the write with "Progress cannot jump more than one page at a time." The "Finished" click silently fails (the `.catch(() => {})` swallows it) and the completion never records.
+  - Fix (recommended): walk the indexes on finish. Loop from `progressLastPageIndex + 1` to `activePageIndex`, awaiting each `recordProgress(topic.id, i)`. The guard stays, the high-water mark reaches the last page, and completion flips. Cost is up to `page_count - 1` sequential POSTs on one action; acceptable for topic-sized page counts.
+  - Alternative: drop the jump guard in `TopicProgressView`. Simpler, but weakens the "monotonic reading" invariant and lets a client set the high-water mark past unread pages. Not recommended without a replacement check.
+  - Test: in `TopicProgressTests`, add a case that walks to page 3 via single-page writes, navigates back to page 1 (monotonic, stays at 3), then walks to the last page one index at a time from 3 upward, and asserts `is_completed` flips and `completed_at` is set. The bug is client-side, so the backend test proves the sequence works; the reader change is verified manually.
+
 - **Broadcast completion as a terminal state.**
-  - `Broadcast.completed_at` (nullable datetime), set in `BroadcastCompleteView` inside the existing `select_for_update`, idempotent.
-  - `BroadcastJoinView`, `BroadcastRoomUrlView`, `BroadcastCancelView` reject on `completed_at is not None`.
-  - Serializers expose `is_completed` (derived) and `completed_at`.
-  - Detail page shows "Completed" badge and "This broadcast has ended"; Cancel and Enter room are hidden.
-  - `/broadcasts` gains a Past tab.
-  - Backfill migration from `Session.completed_at` for existing completed broadcasts.
-  - Tests: join/room-url/cancel on completed → 400, complete sets and does not overwrite `completed_at`, completed appears in past list, cancelled still hidden from past list.
+  - Model: add `Broadcast.completed_at` (nullable datetime). Migration with a backfill from `Session.completed_at` where `session_type="broadcast"`. The field is distinct from `is_cancelled`; a broadcast can be neither, cancelled, or completed, but not both cancelled and completed.
+  - `BroadcastCompleteView`: set `completed_at` inside the existing `select_for_update` transaction. Idempotent: a second call returns the existing `Session` with 200 and does not overwrite `completed_at`.
+  - Guards: `BroadcastJoinView`, `BroadcastRoomUrlView`, and `BroadcastCancelView` reject when `completed_at is not None` with a 400 and a message naming the state ("This broadcast has already ended"). `BroadcastLeaveView` stays idempotent and does not need the guard, since leaving a completed broadcast is harmless.
+  - Serializers: `BroadcastListSerializer` and `BroadcastDetailSerializer` expose `is_completed` (derived from `completed_at is not None`) and `completed_at`. The list serializer already computes `is_completed` from `sessions.exists()`; once the column exists, prefer the column so the two cannot disagree.
+  - Detail page (`app/(app)/broadcasts/[id]/page.tsx`): "Completed" badge, "This broadcast has ended" notice, hide Cancel and Enter room. The `SessionPanel` completion card already hides itself once a `Session` exists, so no change there.
+  - List page (`app/(app)/broadcasts/page.tsx`): the card now shows "Completed" when `is_completed`, and "Ended" when the scheduled time has passed but completion was never marked. A Past tab is out of scope for this item; the README lists it under the existing `/broadcasts` past filter work and it can land with or after this change.
+  - Tests: join/room-url/cancel on a completed broadcast return 400; complete sets `completed_at` and does not overwrite it on a second call; a completed broadcast appears in `?past=true`; a cancelled broadcast stays hidden from both upcoming and past lists.
+  - Out of scope: notifications on completion, archiving, deleting the Whereby room. The room expires on its own.
+
 - **Cancel accepted request.**
-  - `POST /api/requests/{id}/cancel-accepted/` — either party, only while `status == "closed"` and no `Session` row exists.
-  - Flips `Request.status` back to `open`, sets the accepted `Application` back to `pending` (or deletes it), un-rejects the other applications, closes the Phase 7 thread.
-  - Tests: tutee can cancel, tutor can cancel, cannot cancel after `Session` exists, thread becomes read-only.
-- **B1 — topic create response shows locked pages to owner.** `TopicListCreateView.create` builds the read serializer without `progress_by_topic`, so `_progress_for` falls back to a DB query and locks the owner's own pages in the create response. Pass an empty `progress_by_topic` (or the owner's) into the create response context.
-- **B3 — reader finish jump guard.** `handleFinish` POSTs `activePageIndex` after sidebar navigation, which trips the "cannot jump more than one page" backend guard when intermediate pages were never posted. Fix by walking indexes on finish, or drop the guard.
-- **B5 — topic page order collision.** `TopicPageListCreateView.perform_create` uses `pages.length + 1`, which 500s after any delete leaves a gap. Fix with `max(order) + 1`.
-- **Request detail report button in all non-owner states.** Already shipped; list it here so the phase is honest about what it contains. If it is done, it is a note, not a task.
-- Anything else found while building Phases 6-9. Reserve the phase for this; do not pre-close the list.
+  - Endpoint: `POST /api/requests/{id}/cancel-accepted/`. Either party (tutee or the accepted tutor), only while `Request.status == "closed"` and no `Session` row exists for the request. Returns the updated `Request` in detail shape.
+  - Effect: flip `Request.status` back to `"open"`, set the accepted `Application.status` back to `"pending"` (do not delete it; the tutor applied in good faith and can re-apply or walk away), un-reject the applications that were auto-rejected when the accept happened, and close the Phase 7 thread. The thread closure is derived, so the only write is on `Request` and `Application`; `thread_is_open` returns false once `Request.status == "open"`, which the existing rule already handles. Confirm this is the intended derivation, since `thread_is_open` currently requires `Request.status == "closed"` plus an accepted application; flipping the request to open makes the thread read-only without a separate `closed_at`.
+  - Guard: if a `Session` exists, reject with 400. This is the same rule as the known-limitation note about settlement; a completed engagement cannot be cancelled.
+  - Tests: tutee can cancel; the accepted tutor can cancel; a non-party gets 403; cancelling after a `Session` exists returns 400; cancelling a request that is not closed returns 400; the thread becomes read-only after cancel (assert via `thread_is_open` or the messages POST returning 400).
+  - UI: a "Cancel" action on `/requests/[id]` for both parties when the conditions hold, with a confirm. For the tutor this is the escape hatch when the tutee ghosts, so it should be discoverable from the request detail, not buried.
+
+- **Anything else found while building Phases 6-9.** Reserve the phase for this; do not pre-close the list.
+
+**Ordering note:** B1 and B3 are independent of the broadcast and cancel work and should land first, since they are small, have isolated tests, and unblock the Phase 11 smoke checklist's "delete page 2, add a new page" and "read to the end via sidebar" steps. Broadcast terminal state is the largest item and should land before cancel-accepted, because cancel-accepted's "no `Session` exists" guard should be consistent with the new completed-broadcast guards. Cancel-accepted is last.
 
 ---
 

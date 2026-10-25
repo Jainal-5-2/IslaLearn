@@ -322,7 +322,7 @@ function BroadcastDetailPage() {
           targetId={broadcast.id}
           session={broadcast.session ?? null}
           reviewableUsers={reviewableUsers}
-          isTutor={true}
+          canComplete={true}
           onSessionChanged={refresh}
         />
       )}
@@ -333,7 +333,7 @@ function BroadcastDetailPage() {
           targetId={broadcast.id}
           session={broadcast.session}
           reviewableUsers={reviewableUsers}
-          isTutor={false}
+          canComplete={false}
           onSessionChanged={refresh}
         />
       )}

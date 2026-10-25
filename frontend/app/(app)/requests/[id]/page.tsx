@@ -383,9 +383,8 @@ function RequestDetailPage() {
         </div>
         {preferredTimePreview && (
           <p
-            className={`text-xs mt-1 ${
-              preferredTimePreview.ok ? "text-muted-foreground" : "text-red-600"
-            }`}
+            className={`text-xs mt-1 ${preferredTimePreview.ok ? "text-muted-foreground" : "text-red-600"
+              }`}
           >
             {preferredTimePreview.ok
               ? `Will be saved as: ${preferredTimePreview.text}`
@@ -501,7 +500,7 @@ function RequestDetailPage() {
           targetId={req.id}
           session={req.session}
           reviewableUsers={reviewableUsers}
-          isTutor={!!isAcceptedTutor}
+          canComplete={isOwner}
           onSessionChanged={refresh}
         />
       ) : (
@@ -511,7 +510,7 @@ function RequestDetailPage() {
             targetId={req.id}
             session={null}
             reviewableUsers={reviewableUsers}
-            isTutor={!!isAcceptedTutor}
+            canComplete={isOwner}
             onSessionChanged={refresh}
           />
         )
@@ -541,10 +540,10 @@ function RequestDetailPage() {
                     className={cn(
                       "text-xs px-2 py-1 rounded-md font-medium",
                       a.status === "accepted" &&
-                        "bg-green-500/10 text-green-600",
+                      "bg-green-500/10 text-green-600",
                       a.status === "rejected" && "bg-red-500/10 text-red-600",
                       a.status === "pending" &&
-                        "bg-muted text-muted-foreground"
+                      "bg-muted text-muted-foreground"
                     )}
                   >
                     {a.status}

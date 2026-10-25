@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, Calendar, Users } from "lucide-react";
+import { Plus, Calendar, Users, CheckCircle2 } from "lucide-react";
 import {
   getSubjects,
   getBroadcasts,
@@ -12,7 +12,6 @@ import {
 } from "@/lib/api";
 import { SubjectCombobox } from "@/components/subject-combobox";
 import { PageSkeleton } from "@/components/page-skeleton";
-import { cn } from "@/lib/utils";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -155,6 +154,12 @@ function BroadcastCard({ broadcast }: { broadcast: Broadcast }) {
   const isFull = broadcast.is_full;
   const joined = !!broadcast.my_participation;
 
+  // Three reachable states in this list (cancelled is filtered out by
+  // the API): completed, ended but unmarked, and upcoming.
+  const isCompleted = broadcast.is_completed;
+  const isPast = new Date(broadcast.scheduled_at).getTime() < Date.now();
+  const isEnded = !isCompleted && isPast;
+
   return (
     <Link
       href={`/broadcasts/${broadcast.id}`}
@@ -164,12 +169,23 @@ function BroadcastCard({ broadcast }: { broadcast: Broadcast }) {
         <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
           {broadcast.subject.name}
         </span>
-        {joined && (
+        {isCompleted && (
+          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500/10 text-green-600 rounded-md">
+            <CheckCircle2 className="h-3 w-3" />
+            Completed
+          </span>
+        )}
+        {isEnded && (
+          <span className="text-xs font-medium px-2 py-1 bg-muted text-muted-foreground rounded-md">
+            Ended
+          </span>
+        )}
+        {joined && !isCompleted && (
           <span className="text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
             Joined
           </span>
         )}
-        {isFull && !joined && (
+        {isFull && !joined && !isCompleted && (
           <span className="text-xs font-medium px-2 py-1 bg-muted text-muted-foreground rounded-md">
             Full
           </span>

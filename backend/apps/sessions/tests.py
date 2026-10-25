@@ -36,11 +36,12 @@ class RequestCompleteTests(APITestCase):
 
     Invariants:
       - Anonymous gets 401.
-      - Non-tutor participant (tutee) gets 403.
-      - The accepted tutor can complete; a Session row is created.
+      - The accepted tutor gets 403 (only the tutee may complete).
+      - A non-party gets 403.
+      - The tutee can complete; a Session row is created with
+        marked_by set to the tutee.
       - Completing twice is idempotent (one Session row).
       - A request with no accepted tutor returns 400.
-      - A different tutor cannot complete.
     """
 
     def setUp(self):
@@ -50,7 +51,7 @@ class RequestCompleteTests(APITestCase):
         self.tutor = User.objects.create_user(
             username="tutor", password="pass-tutor-1", email="tu@example.com"
         )
-        self.other_tutor = User.objects.create_user(
+        self.other = User.objects.create_user(
             username="other", password="pass-other-1", email="ot@example.com"
         )
         self.subject = Subject.objects.create(name="Python")
@@ -66,28 +67,28 @@ class RequestCompleteTests(APITestCase):
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_tutee_cannot_complete(self):
-        self._login(self.tutee)
-        response = self.client.post(self.url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_other_tutor_cannot_complete(self):
-        self._login(self.other_tutor)
-        response = self.client.post(self.url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_tutor_completes_and_session_is_created(self):
+    def test_tutor_cannot_complete(self):
         self._login(self.tutor)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_party_cannot_complete(self):
+        self._login(self.other)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_tutee_completes_and_session_is_created(self):
+        self._login(self.tutee)
         response = self.client.post(self.url)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         session = Session.objects.get(request=self.req)
         self.assertEqual(session.session_type, "one_on_one")
         self.assertIsNotNone(session.completed_at)
-        self.assertEqual(session.marked_by_id, self.tutor.id)
+        self.assertEqual(session.marked_by_id, self.tutee.id)
 
     def test_complete_twice_is_idempotent(self):
-        self._login(self.tutor)
+        self._login(self.tutee)
         first = self.client.post(self.url)
         second = self.client.post(self.url)
         self.assertEqual(first.status_code, status.HTTP_201_CREATED)
@@ -98,12 +99,11 @@ class RequestCompleteTests(APITestCase):
         open_req = Request.objects.create(
             tutee=self.tutee, subject=self.subject, description="no tutor"
         )
-        self._login(self.tutor)
+        self._login(self.tutee)
         response = self.client.post(
             reverse("request-complete", args=[open_req.id])
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
 
 class BroadcastCompleteTests(APITestCase):
     """

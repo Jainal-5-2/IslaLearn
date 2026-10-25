@@ -23,9 +23,18 @@ class RequestCompleteView(APIView):
     """
     POST /api/requests/{id}/complete/
 
-    The accepted tutor marks a 1:1 request complete. Creates a Session
-    row (session_type="one_on_one"). Idempotent: calling twice returns
-    the existing session with 200 instead of creating a second.
+    The tutee marks a 1:1 request complete. Creates a Session row
+    (session_type="one_on_one"). Idempotent: calling twice returns the
+    existing session with 200 instead of creating a second.
+
+    Only the tutee can complete. Letting the tutor complete would let
+    them close a session that never happened, which is the failure mode
+    this rule exists to prevent. The trade-off (a ghosting tutee leaves
+    the engagement unclosed) is documented in the README's known
+    limitations.
+
+    `Session.marked_by` is the tutee for one_on_one sessions. Do not
+    read it as "who ran the session."
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -45,9 +54,9 @@ class RequestCompleteView(APIView):
         )
         if accepted is None:
             raise ValidationError("This request has no accepted tutor.")
-        if accepted.tutor_id != request.user.id:
+        if tutoring_request.tutee_id != request.user.id:
             raise PermissionDenied(
-                "Only the accepted tutor can mark this request complete."
+                "Only the tutee can mark this request complete."
             )
 
         with transaction.atomic():
@@ -70,7 +79,6 @@ class RequestCompleteView(APIView):
 
         serializer = SessionSerializer(session, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
 
 class BroadcastCompleteView(APIView):
     """

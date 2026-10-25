@@ -30,6 +30,8 @@ class BroadcastListSerializer(serializers.ModelSerializer):
     )
     is_full = serializers.SerializerMethodField()
     my_participation = serializers.SerializerMethodField()
+    is_completed = serializers.SerializerMethodField()
+    completed_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Broadcast
@@ -46,6 +48,8 @@ class BroadcastListSerializer(serializers.ModelSerializer):
             "is_full",
             "is_cancelled",
             "my_participation",
+            "is_completed",
+            "completed_at",
             "created_at",
         ]
 
@@ -64,6 +68,17 @@ class BroadcastListSerializer(serializers.ModelSerializer):
         if preloaded is not None:
             return obj.id in preloaded
         return obj.participants.filter(user=user).exists()
+
+    def get_is_completed(self, obj):
+        # Uses the prefetched sessions list from the view, so this does
+        # not fire a query per row.
+        return obj.sessions.exists()
+
+    def get_completed_at(self, obj):
+        session = obj.sessions.first()
+        if session is None or session.completed_at is None:
+            return None
+        return session.completed_at.isoformat()
 
 
 class BroadcastDetailSerializer(serializers.ModelSerializer):

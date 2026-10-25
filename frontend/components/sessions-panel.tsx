@@ -18,9 +18,14 @@ export type ReviewableUser = { id: number; username: string };
  * Complete-and-review controls for a session-bearing page.
  *
  * Three states:
- *   1. No session yet, viewer is the tutor: "Mark complete".
- *   2. Session exists, viewer can review: review form.
- *   3. Session exists, viewer has reviewed: read-only view of it.
+ *   1. No session yet and `canComplete`: "Mark complete".
+ *   2. Session exists and the viewer can review: review form.
+ *   3. Session exists and the viewer has reviewed: read-only view.
+ *
+ * `canComplete` is decided by the parent. For a 1:1 request it is the
+ * tutee (only the tutee completes). For a broadcast it is the tutor
+ * (only the tutor completes). The session detail page passes `false`
+ * because the session already exists there.
  *
  * `reviewableUsers` is computed by the parent: for a 1:1 session it is
  * a single entry (the other party); for a broadcast it is the tutor
@@ -32,14 +37,14 @@ export function SessionPanel({
   targetId,
   session,
   reviewableUsers,
-  isTutor,
+  canComplete,
   onSessionChanged,
 }: {
   kind: "request" | "broadcast";
   targetId: number;
   session: Session | null;
   reviewableUsers: ReviewableUser[];
-  isTutor: boolean;
+  canComplete: boolean;
   onSessionChanged: () => void;
 }) {
   const [completing, setCompleting] = useState(false);
@@ -53,18 +58,25 @@ export function SessionPanel({
 
   // ---- State 1: no session ----
   if (!session) {
-    if (!isTutor) {
+    if (!canComplete) {
       return null;
     }
     return (
       <div className="bg-card border border-border rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-2">Session complete?</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Mark this session complete when you have finished. Participants
-          can then leave reviews.
+          {kind === "request"
+            ? "Mark this session complete once you have received the help. This unlocks reviews and cannot be undone."
+            : "Mark this session complete when you have finished. Participants can then leave reviews."}
         </p>
         <button
           onClick={async () => {
+            if (kind === "request") {
+              const ok = confirm(
+                "Mark this session complete? This unlocks reviews and cannot be undone."
+              );
+              if (!ok) return;
+            }
             setCompleting(true);
             setError("");
             try {

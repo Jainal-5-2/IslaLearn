@@ -162,7 +162,7 @@ function SessionDetailPage() {
             my_review: session.my_review,
           }}
           reviewableUsers={reviewableUsers}
-          isTutor={false}
+          canComplete={false}
           onSessionChanged={refresh}
         />
       )}
