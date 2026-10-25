@@ -41,6 +41,10 @@ export type {
   UserReviewsResponse,
   Report,
   ReportCategory,
+  Message,
+  ThreadOtherParty,
+  ThreadLastMessage,
+  ThreadSummary,
 } from "./types";
 
 // Auth
@@ -102,7 +106,12 @@ export {
   getSession,
 } from "./sessions";
 
+// Messages
+export {
+  getThreads,
+  getThreadMessages,
+  sendThreadMessage,
+} from "./messages";
+
 // Reports
 export { createReport } from "./reports";
-
-

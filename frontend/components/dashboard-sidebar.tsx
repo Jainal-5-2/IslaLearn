@@ -69,6 +69,12 @@ const NAV_ITEMS: NavItem[] = [
     href: "/sessions",
     owns: (p) => p === "/sessions" || /^\/sessions\/\d+/.test(p),
   },
+  {
+    Icon: MessageCircle,
+    title: "Messages",
+    href: "/messages",
+    owns: (p) => p === "/messages" || /^\/messages\/\d+/.test(p),
+  },
   { Icon: Video, title: "Broadcasts", href: "/broadcasts" },
 ];
 

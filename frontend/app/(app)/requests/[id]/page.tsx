@@ -3,15 +3,17 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Lock, Save, X, XCircle } from "lucide-react";
+import { Pencil, Lock, Save, X, XCircle, MessageSquare } from "lucide-react";
 import {
   getRequest,
   getMe,
   getSubjects,
+  getThreads,
   updateRequest,
   closeRequest,
   decideApplication,
   TutoringRequest,
+  ThreadSummary,
   Subject,
   User,
   ApiError,
@@ -40,6 +42,7 @@ function RequestDetailPage() {
   const [req, setReq] = useState<TutoringRequest | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [thread, setThread] = useState<ThreadSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deciding, setDeciding] = useState<number | null>(null);
@@ -63,11 +66,24 @@ function RequestDetailPage() {
   }
 
   useEffect(() => {
-    Promise.all([getRequest(requestId), getMe(), getSubjects()])
-      .then(([r, u, s]) => {
+    Promise.all([
+      getRequest(requestId),
+      getMe(),
+      getSubjects(),
+      getThreads().catch(() => ({
+        count: 0,
+        next: null,
+        previous: null,
+        results: [] as ThreadSummary[],
+      })),
+    ])
+      .then(([r, u, s, threads]) => {
         setReq(r);
         setUser(u);
         setSubjects(s);
+        const match =
+          threads.results.find((t) => t.request === requestId) ?? null;
+        setThread(match);
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 404)
@@ -197,6 +213,20 @@ function RequestDetailPage() {
       );
       const updated = await getRequest(requestId);
       setReq(updated);
+
+      // On accept, the backend creates the thread. Re-fetch the list so
+      // the "Message" button appears without a manual page reload.
+      if (status === "accepted") {
+        getThreads()
+          .then((threads) => {
+            const match =
+              threads.results.find((t) => t.request === requestId) ?? null;
+            setThread(match);
+          })
+          .catch(() => {
+            // Non-fatal; the request page still works.
+          });
+      }
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Failed to update");
     } finally {
@@ -409,9 +439,21 @@ function RequestDetailPage() {
         </div>
       )}
 
-      {/* Non-owner actions: apply / applied / closed notice, plus the
-          report button. The report button renders in every non-owner
-          state, regardless of status or whether this user applied. */}
+      {isOwner && thread && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <Link
+            href={`/messages/${thread.id}`}
+            className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Message {thread.other_party?.username ?? "tutor"}
+          </Link>
+        </div>
+      )}
+
+      {/* Actions row: applies to any non-owner viewer. The message
+          button appears only when the thread exists, which happens
+          the moment the request is accepted. */}
       {!isOwner && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           {canApply && (
@@ -436,6 +478,15 @@ function RequestDetailPage() {
             <p className="flex-1 text-sm text-muted-foreground">
               This request is closed.
             </p>
+          )}
+          {thread && (
+            <Link
+              href={`/messages/${thread.id}`}
+              className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Message {thread.other_party?.username ?? "participant"}
+            </Link>
           )}
           <ReportButton
             target={{ target_request: req.id }}

@@ -3,13 +3,15 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen, Video } from "lucide-react";
+import { BookOpen, MessageSquare, Video } from "lucide-react";
 import {
   getMe,
   getRequests,
   getSessions,
+  getThreads,
   TutoringRequest,
   SessionSummary,
+  ThreadSummary,
   User,
   ApiError,
 } from "@/lib/api";
@@ -31,6 +33,9 @@ function SessionsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [active, setActive] = useState<TutoringRequest[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [threadByRequest, setThreadByRequest] = useState<Record<number, number>>(
+    {}
+  );
   const [tab, setTab] = useState<Tab>("active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -40,11 +45,23 @@ function SessionsPage() {
       getMe(),
       getRequests({ accepted: true, status: "closed" }),
       getSessions(),
+      getThreads().catch(() => ({
+        count: 0,
+        next: null,
+        previous: null,
+        results: [] as ThreadSummary[],
+      })),
     ])
-      .then(([u, activeData, sessionsData]) => {
+      .then(([u, activeData, sessionsData, threadsData]) => {
         setUser(u);
         setActive(activeData.results);
         setSessions(sessionsData.results);
+        const map: Record<number, number> = {};
+        for (const t of threadsData.results) {
+          if (!t.is_open) continue;
+          map[t.request] = t.id;
+        }
+        setThreadByRequest(map);
       })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
@@ -119,7 +136,9 @@ function SessionsPage() {
         ))}
       </div>
 
-      {tab === "active" && <ActiveList requests={active} />}
+      {tab === "active" && (
+        <ActiveList requests={active} threadByRequest={threadByRequest} />
+      )}
       {tab === "completed" && (
         <SessionList
           sessions={completed}
@@ -136,7 +155,13 @@ function SessionsPage() {
   );
 }
 
-function ActiveList({ requests }: { requests: TutoringRequest[] }) {
+function ActiveList({
+  requests,
+  threadByRequest,
+}: {
+  requests: TutoringRequest[];
+  threadByRequest: Record<number, number>;
+}) {
   if (requests.length === 0) {
     return (
       <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
@@ -155,29 +180,44 @@ function ActiveList({ requests }: { requests: TutoringRequest[] }) {
   }
   return (
     <div className="space-y-3">
-      {requests.map((r) => (
-        <Link
-          key={r.id}
-          href={`/requests/${r.id}`}
-          className="block bg-card border border-border rounded-xl p-5 hover:shadow-md hover:border-accent/40 transition-all"
-        >
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
-              {r.subject.name}
-            </span>
-            <span className="text-xs px-2 py-1 rounded-md font-medium bg-green-500/10 text-green-600">
-              Accepted
-            </span>
+      {requests.map((r) => {
+        const threadId = threadByRequest[r.id];
+        return (
+          <div
+            key={r.id}
+            className="bg-card border border-border rounded-xl p-5 hover:shadow-md hover:border-accent/40 transition-all"
+          >
+            <Link href={`/requests/${r.id}`} className="block">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
+                  {r.subject.name}
+                </span>
+                <span className="text-xs px-2 py-1 rounded-md font-medium bg-green-500/10 text-green-600">
+                  Accepted
+                </span>
+              </div>
+              <p className="text-sm text-foreground line-clamp-2">
+                {r.description}
+              </p>
+              <p className="text-xs text-muted-foreground mt-3">
+                by {r.tutee.username} ·{" "}
+                {new Date(r.created_at).toLocaleDateString()}
+              </p>
+            </Link>
+            {threadId !== undefined && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <Link
+                  href={`/messages/${threadId}`}
+                  className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline font-medium"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Message
+                </Link>
+              </div>
+            )}
           </div>
-          <p className="text-sm text-foreground line-clamp-2">
-            {r.description}
-          </p>
-          <p className="text-xs text-muted-foreground mt-3">
-            by {r.tutee.username} ·{" "}
-            {new Date(r.created_at).toLocaleDateString()}
-          </p>
-        </Link>
-      ))}
+        );
+      })}
     </div>
   );
 }

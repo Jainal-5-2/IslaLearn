@@ -198,3 +198,34 @@ export type PublicUser = {
   plan: "free" | "paid";
 };
 
+
+// ---------- Messages ----------
+export type Message = {
+  id: number;
+  thread: number;
+  sender: User;
+  body: string;
+  created_at: string;
+};
+
+export type ThreadOtherParty = {
+  id: number;
+  username: string;
+};
+
+export type ThreadLastMessage = {
+  id: number;
+  body: string;
+  sender_id: number;
+  created_at: string;
+};
+
+export type ThreadSummary = {
+  id: number;
+  request: number;
+  source_title: string;
+  other_party: ThreadOtherParty | null;
+  last_message: ThreadLastMessage | null;
+  is_open: boolean;
+  created_at: string;
+};
