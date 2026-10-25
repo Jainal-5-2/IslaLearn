@@ -31,10 +31,7 @@ class JwtQueryAuthMiddleware(BaseMiddleware):
     """
 
     async def __call__(self, scope, receive, send):
-        print("MW HIT", scope.get("type"), scope.get("path"), flush=True)
         params = parse_qs(scope.get("query_string", b"").decode())
         token = (params.get("token") or [None])[0]
-        print("MW TOKEN", repr(token)[:20], flush=True)
         scope["user"] = await _user_from_token(token) if token else None
-        print("MW USER", scope["user"], flush=True)
         return await super().__call__(scope, receive, send)
