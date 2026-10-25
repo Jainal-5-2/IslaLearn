@@ -4,6 +4,8 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.messages.models import Thread
+
 from .models import Application, Request
 from .serializers import (
     ApplicationCreateSerializer,
@@ -54,7 +56,7 @@ class RequestListCreateView(generics.ListCreateAPIView):
             ).distinct()
 
         return queryset
-    
+
     def get_serializer_class(self):
         if self.request.method == "POST":
             return RequestCreateSerializer
@@ -249,5 +251,6 @@ class ApplicationDecisionView(generics.UpdateAPIView):
                 ).update(status="rejected")
                 req.status = "closed"
                 req.save(update_fields=["status"])
+                Thread.objects.get_or_create(request=req)
 
         return Response(ApplicationSerializer(application).data)

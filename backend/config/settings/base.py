@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'apps.broadcasts',
     'apps.sessions',
     'apps.reports',
+    'apps.messages'
 ]
 
 MIDDLEWARE = [
