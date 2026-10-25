@@ -1,5 +1,12 @@
 import { apiFetch } from "./client";
-import type { Review, Session, UserReviewsResponse } from "./types";
+import { normalizePaginated, type Paginated } from "./pagination";
+import type {
+  Review,
+  Session,
+  SessionDetailData,
+  SessionSummary,
+  UserReviewsResponse,
+} from "./types";
 
 export async function completeRequest(requestId: number): Promise<Session> {
   return apiFetch<Session>(`/requests/${requestId}/complete/`, {
@@ -29,4 +36,20 @@ export async function getUserReviews(
   userId: number
 ): Promise<UserReviewsResponse> {
   return apiFetch<UserReviewsResponse>(`/users/${userId}/reviews/`);
+}
+
+export async function getSessions(params?: {
+  type?: "one_on_one" | "broadcast";
+}): Promise<Paginated<SessionSummary>> {
+  const search = new URLSearchParams();
+  if (params?.type) search.set("type", params.type);
+  const qs = search.toString();
+  const data = await apiFetch<Paginated<SessionSummary> | SessionSummary[]>(
+    `/sessions/${qs ? `?${qs}` : ""}`
+  );
+  return normalizePaginated(data);
+}
+
+export async function getSession(id: number): Promise<SessionDetailData> {
+  return apiFetch<SessionDetailData>(`/sessions/${id}/`);
 }

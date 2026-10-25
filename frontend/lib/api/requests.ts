@@ -6,11 +6,13 @@ export async function getRequests(params?: {
   subject?: number;
   mine?: boolean;
   status?: "open" | "closed";
+  accepted?: boolean;
 }): Promise<Paginated<TutoringRequest>> {
   const search = new URLSearchParams();
   if (params?.subject) search.set("subject", String(params.subject));
   if (params?.mine) search.set("mine", "true");
   if (params?.status) search.set("status", params.status);
+  if (params?.accepted) search.set("accepted", "true");
   const qs = search.toString();
   const data = await apiFetch<Paginated<TutoringRequest> | TutoringRequest[]>(
     `/requests/${qs ? `?${qs}` : ""}`

@@ -145,6 +145,29 @@ export type UserReviewsResponse = {
   average_rating: number | null;
 };
 
+// ---------- Sessions (list / detail) ----------
+export type SessionOtherParty = {
+  id: number;
+  username: string;
+};
+
+export type SessionSummary = {
+  id: number;
+  session_type: SessionType;
+  request: number | null;
+  broadcast: number | null;
+  source_title: string;
+  other_parties: SessionOtherParty[];
+  completed_at: string;
+  created_at: string;
+};
+
+export type SessionDetailData = SessionSummary & {
+  source_link: string | null;
+  can_review: boolean;
+  my_review: Review | null;
+};
+
 // ---------- Reports ----------
 export type ReportCategory =
   | "harassment"

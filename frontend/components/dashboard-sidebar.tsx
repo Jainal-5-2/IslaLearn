@@ -9,6 +9,7 @@ import {
   Plus,
   Video,
   MessageSquare,
+  MessageCircle,
   Settings,
   HelpCircle,
   ChevronsRight,
@@ -61,6 +62,12 @@ const NAV_ITEMS: NavItem[] = [
     title: "Requests",
     href: "/requests",
     owns: (p) => p === "/requests" || /^\/requests\/\d+/.test(p),
+  },
+  {
+    Icon: MessageCircle,
+    title: "Sessions",
+    href: "/sessions",
+    owns: (p) => p === "/sessions" || /^\/sessions\/\d+/.test(p),
   },
   { Icon: Video, title: "Broadcasts", href: "/broadcasts" },
 ];

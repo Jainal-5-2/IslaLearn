@@ -34,6 +34,9 @@ export type {
   BroadcastParticipant,
   Session,
   SessionType,
+  SessionSummary,
+  SessionDetailData,
+  SessionOtherParty,
   Review,
   UserReviewsResponse,
   Report,
@@ -95,6 +98,8 @@ export {
   completeBroadcast,
   createReview,
   getUserReviews,
+  getSessions,
+  getSession,
 } from "./sessions";
 
 // Reports
