@@ -10,6 +10,143 @@ from .models import Message, Thread
 
 User = get_user_model()
 
+import redis
+from django.conf import settings as django_settings
+
+def _has_redis():
+    try:
+        url = django_settings.CHANNEL_LAYERS["default"]["CONFIG"]["hosts"][0]
+        if isinstance(url, (list, tuple)):
+            url = url[0]
+        redis.Redis.from_url(url).ping()
+        return True
+    except Exception:
+        return False
+
+
+class ThreadPresenceTests(TransactionTestCase):
+    """
+    Covers presence: snapshot on connect, presence broadcasts, and
+    heartbeat refresh.
+
+    Skipped when Redis is unreachable so a developer without Docker
+    sees yellow, not red. Presence itself swallows Redis errors, so
+    nothing else in the suite depends on this class running.
+    """
+
+    def setUp(self):
+        if not _has_redis():
+            self.skipTest("Redis is not reachable; skipping presence tests.")
+        from . import presence
+
+        self.presence = presence
+
+        self.tutee = User.objects.create_user(
+            username="ptutee", password="pass-pt-1", email="pt@example.com"
+        )
+        self.tutor = User.objects.create_user(
+            username="ptutor", password="pass-pu-1", email="pu@example.com"
+        )
+        self.subject = Subject.objects.create(name="Presence")
+        self.req = _make_accepted_request(self.tutee, self.tutor, self.subject)
+        self.thread = Thread.objects.create(request=self.req)
+        # Wipe any leftover presence from a prior test run.
+        self.presence.mark_offline(self.thread.id, self.tutee.id)
+        self.presence.mark_offline(self.thread.id, self.tutor.id)
+
+    def _connect(self, path):
+        return WebsocketCommunicator(
+            application,
+            path,
+            headers=[(b"origin", b"http://localhost")],
+        )
+
+    def test_snapshot_on_connect_lists_existing_users(self):
+        # Pre-seed the tutor as already in the room.
+        self.presence.mark_online(self.thread.id, self.tutor.id)
+
+        token = _token_for(self.tutee)
+
+        async def run():
+            comm = self._connect(
+                f"/ws/threads/{self.thread.id}/?token={token}"
+            )
+            connected, _ = await comm.connect()
+            assert connected
+            # First frame after accept is the snapshot.
+            frame = await comm.receive_json_from(timeout=2)
+            await comm.disconnect()
+            return frame
+
+        frame = async_to_sync(run)()
+        self.assertEqual(frame["type"], "presence_snapshot")
+        self.assertIn(self.tutor.id, frame["user_ids"])
+
+    def test_connect_and_disconnect_broadcast_presence(self):
+        tutor_token = _token_for(self.tutor)
+        tutee_token = _token_for(self.tutee)
+
+        async def run():
+            # Tutor connects first and stays connected.
+            tutor_comm = self._connect(
+                f"/ws/threads/{self.thread.id}/?token={tutor_token}"
+            )
+            connected, _ = await tutor_comm.connect()
+            assert connected
+            # Drain the tutor's own snapshot frame.
+            await tutor_comm.receive_json_from(timeout=2)
+
+            # Tutee connects.
+            tutee_comm = self._connect(
+                f"/ws/threads/{self.thread.id}/?token={tutee_token}"
+            )
+            connected, _ = await tutee_comm.connect()
+            assert connected
+            await tutee_comm.receive_json_from(timeout=2)  # snapshot
+
+            # Tutor sees the tutee come online.
+            online = await tutor_comm.receive_json_from(timeout=2)
+            # Tutee disconnects.
+            await tutee_comm.disconnect()
+
+            # Tutor sees the tutee go offline.
+            offline = await tutor_comm.receive_json_from(timeout=2)
+            await tutor_comm.disconnect()
+            return online, offline
+
+        online, offline = async_to_sync(run)()
+        self.assertEqual(
+            online,
+            {"type": "presence", "user_id": self.tutee.id, "online": True},
+        )
+        self.assertEqual(
+            offline,
+            {"type": "presence", "user_id": self.tutee.id, "online": False},
+        )
+
+    def test_heartbeat_refreshes_presence(self):
+        self.presence.mark_online(self.thread.id, self.tutor.id)
+        initial = self.presence.current_online(self.thread.id)
+        self.assertIn(self.tutor.id, initial)
+
+        # A heartbeat from a fresh connection should not crash and should
+        # keep the tutor visible.
+        token = _token_for(self.tutor)
+
+        async def run():
+            comm = self._connect(
+                f"/ws/threads/{self.thread.id}/?token={token}"
+            )
+            connected, _ = await comm.connect()
+            assert connected
+            await comm.receive_json_from(timeout=2)  # snapshot
+            await comm.send_json_to({"type": "heartbeat"})
+            # No response frame is expected for a heartbeat.
+            await comm.disconnect()
+
+        async_to_sync(run)()
+        after = self.presence.current_online(self.thread.id)
+        self.assertIn(self.tutor.id, after)
 
 def _make_accepted_request(tutee, tutor, subject, close=True):
     req = Request.objects.create(
@@ -208,3 +345,146 @@ class MessageListCreateTests(APITestCase):
         self._login(self.tutee)
         response = self.client.post(self.url, {"body": "hello"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+from asgiref.sync import async_to_sync
+from channels.testing import WebsocketCommunicator
+from django.test import TransactionTestCase
+
+from config.asgi import application
+
+
+def _token_for(user):
+    from rest_framework_simplejwt.tokens import AccessToken
+
+    return str(AccessToken.for_user(user))
+
+
+class ThreadConsumerTests(TransactionTestCase):
+    """
+    Covers the ThreadConsumer handshake and the POST fan-out.
+
+    Invariants:
+      - No token -> refused (close 4401).
+      - A non-party token -> refused (close 4403).
+      - Unknown thread id -> refused (close 4403).
+      - A party connects.
+      - POST /messages/ fans out the created message to the room.
+
+    Each refusal test asserts on the close code so a failure names the
+    reason instead of just "False is not true".
+    """
+
+    def setUp(self):
+        self.tutee = User.objects.create_user(
+            username="ctutee", password="pass-ct-1", email="ct@example.com"
+        )
+        self.tutor = User.objects.create_user(
+            username="ctutor", password="pass-cu-1", email="cu@example.com"
+        )
+        self.outsider = User.objects.create_user(
+            username="cout", password="pass-co-1", email="co@example.com"
+        )
+        self.subject = Subject.objects.create(name="Sockets")
+        self.req = _make_accepted_request(self.tutee, self.tutor, self.subject)
+        self.thread = Thread.objects.create(request=self.req)
+
+    def _connect(self, path):
+        return WebsocketCommunicator(
+            application,
+            path,
+            headers=[(b"origin", b"http://localhost")],
+        )
+
+    def test_no_token_refused(self):
+        async def run():
+            comm = self._connect(f"/ws/threads/{self.thread.id}/")
+            connected, code = await comm.connect()
+            await comm.disconnect()
+            return connected, code
+
+        connected, code = async_to_sync(run)()
+        self.assertFalse(connected, f"connected with no token (code {code})")
+        self.assertEqual(code, 4401, f"expected 4401, got {code}")
+
+    def test_outsider_refused(self):
+        token = _token_for(self.outsider)
+
+        async def run():
+            comm = self._connect(
+                f"/ws/threads/{self.thread.id}/?token={token}"
+            )
+            connected, code = await comm.connect()
+            await comm.disconnect()
+            return connected, code
+
+        connected, code = async_to_sync(run)()
+        self.assertFalse(connected, f"outsider connected (code {code})")
+        self.assertEqual(code, 4403, f"expected 4403, got {code}")
+
+    def test_unknown_thread_refused(self):
+        token = _token_for(self.tutee)
+
+        async def run():
+            comm = self._connect(f"/ws/threads/999999/?token={token}")
+            connected, code = await comm.connect()
+            await comm.disconnect()
+            return connected, code
+
+        connected, code = async_to_sync(run)()
+        self.assertFalse(connected, f"unknown thread connected (code {code})")
+        self.assertEqual(code, 4403, f"expected 4403, got {code}")
+
+    def test_party_connects(self):
+        token = _token_for(self.tutor)
+
+        async def run():
+            comm = self._connect(
+                f"/ws/threads/{self.thread.id}/?token={token}"
+            )
+            connected, code = await comm.connect()
+            await comm.disconnect()
+            return connected, code
+
+        connected, code = async_to_sync(run)()
+        self.assertTrue(connected, f"refused with close code {code}")
+
+    def test_post_fans_out_to_room(self):
+        token = _token_for(self.tutor)
+        url = f"/ws/threads/{self.thread.id}/?token={token}"
+
+        async def run():
+            comm = self._connect(url)
+            connected, code = await comm.connect()
+            assert connected, f"refused with close code {code}"
+
+            def post():
+                from asgiref.sync import async_to_sync as a2s
+
+                from channels.layers import get_channel_layer
+
+                from .serializers import (
+                    MessageCreateSerializer,
+                    MessageSerializer,
+                )
+
+                s = MessageCreateSerializer(data={"body": "hello"})
+                s.is_valid(raise_exception=True)
+                message = s.save(thread=self.thread, sender=self.tutee)
+                payload = MessageSerializer(message).data
+                a2s(get_channel_layer().group_send)(
+                    f"thread_{self.thread.id}",
+                    {"type": "message.created", "message": payload},
+                )
+
+            from asgiref.sync import sync_to_async
+
+            await sync_to_async(post)()
+
+            frame = await comm.receive_json_from(timeout=2)
+            await comm.disconnect()
+            return frame
+
+        frame = async_to_sync(run)()
+        self.assertEqual(frame["body"], "hello")
+        self.assertEqual(frame["sender"]["id"], self.tutee.id)        
+        

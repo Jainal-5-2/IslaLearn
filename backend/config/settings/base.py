@@ -44,6 +44,9 @@ ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 # Application definition
 
 INSTALLED_APPS = [
+    # daphne must precede django.contrib.staticfiles so runserver is
+    # overridden by Daphne's ASGI-aware runserver.
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -55,6 +58,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'channels',
 
     # Local
     'apps.users',
@@ -95,6 +99,10 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+
+# ASGI entry point. Daphne (and any ASGI server) reads this; it routes
+# HTTP to the Django app and WebSocket to the Channels consumers.
+ASGI_APPLICATION = 'config.asgi.application'
 
 
 # Database
@@ -212,3 +220,18 @@ WHEREBY_API_KEY = env("WHEREBY_API_KEY", default="")
 WHEREBY_API_URL = env(
     "WHEREBY_API_URL", default="https://api.whereby.dev/v1/meetings"
 )
+
+# ---------------------------------------------------------------------------
+# Channels (Messages WebSocket)
+# ---------------------------------------------------------------------------
+# One group per Thread. Redis is the layer so fan-out works across
+# multiple Daphne workers. dev.py falls back to an in-memory layer when
+# REDIS_URL is unset, so a fresh clone still boots without Docker.
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [env("REDIS_URL", default="redis://127.0.0.1:6379/0")],
+        },
+    },
+}

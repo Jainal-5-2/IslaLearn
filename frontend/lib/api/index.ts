@@ -107,9 +107,11 @@ export {
 } from "./sessions";
 
 // Messages
+// Messages
 export {
   getThreads,
   getThreadMessages,
+  getThreadSocketUrl,
   sendThreadMessage,
 } from "./messages";
 

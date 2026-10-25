@@ -8,6 +8,7 @@ import {
   getMe,
   getThreadMessages,
   getThreads,
+  getThreadSocketUrl,
   sendThreadMessage,
   Message,
   ThreadSummary,
@@ -18,7 +19,7 @@ import { PageSkeleton } from "@/components/page-skeleton";
 import { showToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
-const POLL_INTERVAL_MS = 3000;
+const HEARTBEAT_INTERVAL_MS = 10_000;
 
 export default function Page() {
   return (
@@ -35,16 +36,15 @@ function ThreadPage() {
   const [user, setUser] = useState<User | null>(null);
   const [thread, setThread] = useState<ThreadSummary | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [onlineIds, setOnlineIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState("");
 
-  const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<number>(0);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const firstScrollRef = useRef(true);
 
   function scrollToBottom(behavior: ScrollBehavior = "smooth") {
@@ -109,27 +109,87 @@ function ThreadPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
-  // Polling loop, replaced by a WebSocket message handler in Phase 7 WS.
-  // The append logic is appendNewMessages; the transport does not change
-  // the shape of state.
+  // WebSocket. Handles three frame types: message, presence, and
+  // presence_snapshot. appendNewMessages is the single mutation point
+  // for messages; the online set has its own reducer.
   useEffect(() => {
     if (loading || !thread) return;
-    if (pollRef.current !== null) clearInterval(pollRef.current);
+    const url = getThreadSocketUrl(threadId);
+    if (!url) return;
 
-    pollRef.current = setInterval(async () => {
-      try {
-        const incoming = await getThreadMessages(threadId);
-        appendNewMessages(incoming);
-      } catch {
-        // Transient poll failures are silent; the next tick retries.
+    let closed = false;
+    let retry = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    let ws: WebSocket | null = null;
+
+    const startHeartbeat = () => {
+      if (heartbeat) clearInterval(heartbeat);
+      heartbeat = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "heartbeat" }));
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+    };
+
+    const stopHeartbeat = () => {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
       }
-    }, POLL_INTERVAL_MS);
+    };
+
+    const connect = () => {
+      ws = new WebSocket(url);
+      ws.onopen = () => {
+        retry = 0;
+        startHeartbeat();
+        // Catch up on anything sent while the socket was down. Fires on
+        // the initial connect too (harmless: the mount load just ran).
+        // The appendNewMessages helper dedupes by id, so ordering does
+        // not matter.
+        getThreadMessages(threadId)
+          .then((incoming) => appendNewMessages(incoming))
+          .catch(() => {});
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const frame = JSON.parse(ev.data);
+          if (frame.type === "message") {
+            appendNewMessages([frame.message as Message]);
+          } else if (frame.type === "presence") {
+            setOnlineIds((prev) => {
+              const next = new Set(prev);
+              if (frame.online) next.add(frame.user_id);
+              else next.delete(frame.user_id);
+              return next;
+            });
+          } else if (frame.type === "presence_snapshot") {
+            setOnlineIds(new Set(frame.user_ids as number[]));
+          }
+        } catch {
+          // Ignore malformed frames; the next reconnect will resync.
+        }
+      };
+      ws.onclose = () => {
+        stopHeartbeat();
+        if (closed) return;
+        // We just lost contact with the server, so we cannot claim
+        // anyone is online. Clear the set; the next snapshot will
+        // reseed it.
+        setOnlineIds(new Set());
+        const delay = Math.min(1000 * 2 ** retry, 15000);
+        retry += 1;
+        timer = setTimeout(connect, delay);
+      };
+    };
+    connect();
 
     return () => {
-      if (pollRef.current !== null) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      closed = true;
+      stopHeartbeat();
+      if (timer) clearTimeout(timer);
+      ws?.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, threadId, thread?.id]);
@@ -142,7 +202,11 @@ function ThreadPage() {
     setSending(true);
     try {
       const message = await sendThreadMessage(threadId, body);
-      setMessages((prev) => [...prev, message]);
+      // Use appendNewMessages, not a raw setMessages: the socket echo can
+      // arrive before this await resolves, so the message may already be
+      // in state. appendNewMessages dedupes by id and handles both
+      // orderings.
+      appendNewMessages([message]);
       lastIdRef.current = Math.max(lastIdRef.current, message.id);
       setDraft("");
     } catch (e) {
@@ -170,6 +234,8 @@ function ThreadPage() {
   }
 
   const otherName = thread.other_party?.username ?? "Unknown";
+  const otherId = thread.other_party?.id ?? null;
+  const otherOnline = otherId !== null && onlineIds.has(otherId);
   const canSend = thread.is_open;
 
   return (
@@ -187,7 +253,16 @@ function ThreadPage() {
       <div className="bg-card border border-border rounded-xl p-4 mb-4 shrink-0">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold truncate">{otherName}</h1>
+            <h1 className="text-lg font-bold truncate flex items-center gap-2">
+              {otherName}
+              {otherOnline && (
+                <span
+                  className="inline-block h-2 w-2 rounded-full bg-green-500"
+                  aria-label="Online"
+                  title="Online"
+                />
+              )}
+            </h1>
             <p className="text-xs text-muted-foreground truncate">
               {thread.source_title}
             </p>
@@ -221,7 +296,6 @@ function ThreadPage() {
             />
           ))
         )}
-        <div ref={bottomRef} />
       </div>
 
       {!canSend && (

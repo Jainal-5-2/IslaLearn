@@ -1,3 +1,5 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.db import models
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -69,6 +71,10 @@ class MessageListCreateView(APIView):
     """
     GET /api/threads/{id}/messages/     (list, oldest first)
     POST /api/threads/{id}/messages/    (create; 400 if thread is closed)
+
+    A successful POST fans out the created message to the thread's
+    WebSocket group. The transport is the only change from the polling
+    version; the payload shape matches MessageSerializer.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -103,7 +109,11 @@ class MessageListCreateView(APIView):
         serializer.is_valid(raise_exception=True)
         message = serializer.save(thread=thread, sender=request.user)
 
-        return Response(
-            MessageSerializer(message).data,
-            status=status.HTTP_201_CREATED,
+        payload = MessageSerializer(message).data
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"thread_{thread.id}",
+            {"type": "message.created", "message": payload},
         )
+
+        return Response(payload, status=status.HTTP_201_CREATED)

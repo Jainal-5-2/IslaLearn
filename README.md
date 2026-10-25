@@ -308,19 +308,19 @@ data.
 10. Build request browse/post pages (tutee) and apply flow (tutor).
 11. Build accept/reject flow.
 
-**Phase 4 — Supply Flow (Broadcasts)**
+**Phase 4 — Supply Flow (Broadcasts)** `[DONE]`
 12. Integrate Whereby Embedded: create an account on the Explore plan (no card), store the API key in Django env (server-side only), and build a small backend service that creates a meeting and returns its URL.
 13. Build `Broadcast` + `BroadcastParticipant` models and API, including `room-url` with tutor/participant-only access.
 14. Build broadcast browse/create/join pages + live room page (iframe embed inside a single `BroadcastRoom` component).
 15. Test the 30-minute meeting cap: see what happens when a meeting hits it and make sure the UI handles it gracefully. Tutees join with camera off by default, since many users have limited bandwidth.
 
-**Phase 5 — Trust & Polish**
+**Phase 5 — Trust & Polish** `[DONE]`
 16. Build `Session` + `Review` + `Report` models and API. `[5a: DONE for Session + Review; Report pending]`
 17. Build session-complete flow + review submission + profile reviews. `[5a: DONE]`
 18. Build report button. `[5b: NOT STARTED]`
 19. Polish UI, add empty states, loading states, error handling. `[5c: NOT STARTED]`
 
-**Phase 6 — Session Page**
+**Phase 6 — Session Page** `[DONE]`
 
 **Goal:** Give the user one place to see their tutoring engagements: accepted requests in progress, completed ones, and reviewed ones. Read-only list plus a detail view. No messaging, no notifications yet.
 
@@ -342,7 +342,7 @@ data.
 
 ---
 
-**Phase 7 — Messages**
+**Phase 7 — Messages** 
 
 **Goal:** A per-engagement thread between the parties, tied to `Request.status`, closed when the request closes.
 
@@ -459,6 +459,7 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 - Schedule a broadcast, join as a second account, enter the room.
 - Complete the broadcast, verify join/enter are blocked (this is the Phase 10 fix).
 - Cancel a different accepted request and verify the thread goes read-only (this is the Phase 10 cancel flow).
+- Send a message on the Phase 7 thread; confirm the other party receives it live, and that a message sent while the receiver was offline appears on reconnect without a refresh.
 
 This catches Phase 10 regressions before step 22.
 
