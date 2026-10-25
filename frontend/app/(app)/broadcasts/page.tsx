@@ -66,8 +66,12 @@ function BroadcastsPage() {
   }, [selectedSubject]);
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    // Fixed to the viewport: header and filter pinned, only the list
+    // region scrolls. 4rem is the (app) layout's mobile header;
+    // 3rem is main's vertical padding on lg+.
+    <div className="flex flex-col h-[calc(100dvh-4rem)] lg:h-[calc(100dvh-3rem)]">
+      {/* Header */}
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Broadcasts</h1>
           <p className="text-muted-foreground mt-1 text-sm sm:text-base">
@@ -83,14 +87,15 @@ function BroadcastsPage() {
         </Link>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+      {/* Filter row */}
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">
         <SubjectCombobox
           subjects={subjects}
           value={selectedSubject}
           onChange={setSelectedSubject}
         />
         {!loading && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground px-1 sm:px-0">
             {broadcasts.length}{" "}
             {broadcasts.length === 1 ? "broadcast" : "broadcasts"}
           </p>
@@ -98,41 +103,51 @@ function BroadcastsPage() {
       </div>
 
       {error && (
-        <p className="text-red-600 bg-red-500/10 p-3 rounded-lg mb-6">{error}</p>
+        <p className="shrink-0 text-red-600 bg-red-500/10 p-3 rounded-lg mb-6">
+          {error}
+        </p>
       )}
 
-      {loading ? (
-        <PageSkeleton variant="list" />
-      ) : broadcasts.length === 0 ? (
-        <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
-          <h3 className="text-lg font-semibold mb-2">No upcoming broadcasts</h3>
-          <p className="text-muted-foreground mb-6">
-            {selectedSubject
-              ? "Nothing scheduled for this subject yet."
-              : "The community hasn't scheduled anything yet."}
-          </p>
-          <Link
-            href="/broadcasts/new"
-            className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+      {/* Scroll region. min-h-0 lets the flex child shrink below its
+          content size so overflow-y-auto takes over. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {loading ? (
+          <PageSkeleton variant="list" />
+        ) : broadcasts.length === 0 ? (
+          // h-full centers the empty state in the available height
+          // instead of hugging the top of the scroll region.
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 py-12 bg-card border border-dashed border-border rounded-xl">
+            <h3 className="text-base sm:text-lg font-semibold mb-2">
+              No upcoming broadcasts
+            </h3>
+            <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md">
+              {selectedSubject
+                ? "Nothing scheduled for this subject yet."
+                : "The community hasn't scheduled anything yet."}
+            </p>
+            <Link
+              href="/broadcasts/new"
+              className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+            >
+              Schedule the first broadcast
+            </Link>
+          </div>
+        ) : (
+          <motion.div
+            className="space-y-3 pb-2"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
           >
-            Schedule the first broadcast
-          </Link>
-        </div>
-      ) : (
-        <motion.div
-          className="space-y-3"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          {broadcasts.map((b) => (
-            <motion.div key={b.id} variants={itemVariants}>
-              <BroadcastCard broadcast={b} />
-            </motion.div>
-          ))}
-        </motion.div>
-      )}
-    </>
+            {broadcasts.map((b) => (
+              <motion.div key={b.id} variants={itemVariants}>
+                <BroadcastCard broadcast={b} />
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </div>
+    </div>
   );
 }
 

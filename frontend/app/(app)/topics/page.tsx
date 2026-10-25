@@ -64,9 +64,12 @@ export default function TopicsPage() {
       : null;
 
   return (
-    <>
+    // Fixed to the viewport: header and filter pinned, only the grid
+    // scrolls. 4rem is the (app) layout's mobile header; 3rem is
+    // main's vertical padding on lg+.
+    <div className="flex flex-col h-[calc(100dvh-4rem)] lg:h-[calc(100dvh-3rem)]">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Browse Topics</h1>
           <p className="text-muted-foreground mt-1 text-sm sm:text-base">
@@ -83,14 +86,14 @@ export default function TopicsPage() {
       </div>
 
       {/* Filter row */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">
         <SubjectCombobox
           subjects={subjects}
           value={selectedSubject}
           onChange={setSelectedSubject}
         />
         {!loading && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground px-1 sm:px-0">
             {topics.length === 0
               ? "No topics"
               : `${topics.length} ${
@@ -102,83 +105,92 @@ export default function TopicsPage() {
 
       {/* Error */}
       {error && (
-        <p className="text-red-600 bg-red-500/10 p-3 rounded-lg mb-6">{error}</p>
+        <p className="shrink-0 text-red-600 bg-red-500/10 p-3 rounded-lg mb-6">
+          {error}
+        </p>
       )}
 
-      {/* Cards */}
-      {loading ? (
-        <PageSkeleton variant="list" />
-      ) : topics.length === 0 ? (
-        <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
-          <h3 className="text-lg font-semibold mb-2">No topics found</h3>
-          <p className="text-muted-foreground mb-6">
-            {selectedSubject
-              ? "No topics in this subject yet. Be the first to create one!"
-              : "The community hasn't published any topics yet."}
-          </p>
-          <Link
-            href="/topics/new"
-            className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+      {/* Scroll region. min-h-0 lets the flex child shrink below its
+          content size so overflow-y-auto takes over. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {loading ? (
+          <PageSkeleton variant="list" />
+        ) : topics.length === 0 ? (
+          // h-full centers the empty state in the available height
+          // instead of hugging the top of the scroll region.
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 py-12 bg-card border border-dashed border-border rounded-xl">
+            <h3 className="text-base sm:text-lg font-semibold mb-2">
+              No topics found
+            </h3>
+            <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md">
+              {selectedSubject
+                ? "No topics in this subject yet. Be the first to create one!"
+                : "The community hasn't published any topics yet."}
+            </p>
+            <Link
+              href="/topics/new"
+              className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+            >
+              Create the first topic
+            </Link>
+          </div>
+        ) : (
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 content-start auto-rows-fr pb-2"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
           >
-            Create the first topic
-          </Link>
-        </div>
-      ) : (
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 content-start auto-rows-fr"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          {topics.map((topic) => {
-            const progress = topic.progress;
-            const isCompleted = !!progress?.is_completed;
-            const isInProgress = !!progress && !isCompleted;
+            {topics.map((topic) => {
+              const progress = topic.progress;
+              const isCompleted = !!progress?.is_completed;
+              const isInProgress = !!progress && !isCompleted;
 
-            return (
-              <motion.div key={topic.id} variants={itemVariants}>
-                <Link
-                  href={`/topics/${topic.id}`}
-                  className="group flex flex-col h-full bg-card text-card-foreground border border-border rounded-xl p-5 hover:shadow-md hover:border-accent/40 transition-all"
-                >
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
-                      {topic.subject.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {topic.page_count} pages
-                    </span>
-                    {isInProgress && (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
-                        <PlayCircle className="h-3 w-3" />
-                        Continue
+              return (
+                <motion.div key={topic.id} variants={itemVariants}>
+                  <Link
+                    href={`/topics/${topic.id}`}
+                    className="group flex flex-col h-full bg-card text-card-foreground border border-border rounded-xl p-5 hover:shadow-md hover:border-accent/40 transition-all"
+                  >
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                      <span className="text-xs font-medium px-2 py-1 bg-muted rounded-md text-muted-foreground">
+                        {topic.subject.name}
                       </span>
-                    )}
-                    {isCompleted && (
-                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500/10 text-green-600 rounded-md">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Completed
+                      <span className="text-xs text-muted-foreground">
+                        {topic.page_count} pages
                       </span>
-                    )}
-                  </div>
-                  <h2 className="text-lg font-bold mb-2 group-hover:text-accent transition-colors">
-                    {topic.title}
-                  </h2>
-                  <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
-                    {topic.description || "No description provided."}
-                  </p>
-                  <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                    <span>by {topic.created_by.username}</span>
-                    {!topic.is_published && (
-                      <span className="text-orange-500 font-medium">Draft</span>
-                    )}
-                  </div>
-                </Link>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      )}
-    </>
+                      {isInProgress && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
+                          <PlayCircle className="h-3 w-3" />
+                          Continue
+                        </span>
+                      )}
+                      {isCompleted && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500/10 text-green-600 rounded-md">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Completed
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="text-lg font-bold mb-2 group-hover:text-accent transition-colors">
+                      {topic.title}
+                    </h2>
+                    <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
+                      {topic.description || "No description provided."}
+                    </p>
+                    <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                      <span>by {topic.created_by.username}</span>
+                      {!topic.is_published && (
+                        <span className="text-orange-500 font-medium">Draft</span>
+                      )}
+                    </div>
+                  </Link>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+      </div>
+    </div>
   );
 }

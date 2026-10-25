@@ -61,8 +61,12 @@ function MessagesListPage() {
   }
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    // Fixed to the viewport: header pinned, only the thread list
+    // scrolls. 4rem is the (app) layout's mobile header; 3rem is
+    // main's vertical padding on lg+.
+    <div className="flex flex-col h-[calc(100dvh-4rem)] lg:h-[calc(100dvh-3rem)]">
+      {/* Header */}
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Messages</h1>
           <p className="text-muted-foreground mt-1 text-sm sm:text-base">
@@ -71,29 +75,41 @@ function MessagesListPage() {
         </div>
       </div>
 
-      {threads.length === 0 ? (
-        <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
-          <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-          <h3 className="text-lg font-semibold mb-2">No conversations yet</h3>
-          <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-            A conversation opens when your request is accepted by a tutor.
-            Once that happens, this page will show it.
-          </p>
-          <Link
-            href="/requests"
-            className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
-          >
-            Browse requests
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {threads.map((thread) => (
-            <ThreadRow key={thread.id} thread={thread} currentUserId={user.id} />
-          ))}
-        </div>
-      )}
-    </>
+      {/* Scroll region. min-h-0 lets the flex child shrink below its
+          content size so overflow-y-auto takes over. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {threads.length === 0 ? (
+          // h-full centers the empty state in the available height
+          // instead of hugging the top of the scroll region.
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 py-12 bg-card border border-dashed border-border rounded-xl">
+            <MessageSquare className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
+            <h3 className="text-base sm:text-lg font-semibold mb-2">
+              No conversations yet
+            </h3>
+            <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md">
+              A conversation opens when your request is accepted by a tutor.
+              Once that happens, this page will show it.
+            </p>
+            <Link
+              href="/requests"
+              className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+            >
+              Browse requests
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2 pb-2">
+            {threads.map((thread) => (
+              <ThreadRow
+                key={thread.id}
+                thread={thread}
+                currentUserId={user.id}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

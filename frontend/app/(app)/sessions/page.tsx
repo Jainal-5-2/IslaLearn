@@ -106,8 +106,12 @@ function SessionsPage() {
   };
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+    // Fixed to the viewport: header and tabs pinned, only the list
+    // region below scrolls. 4rem is the (app) layout's mobile header;
+    // 3rem is main's vertical padding on lg+.
+    <div className="flex flex-col h-[calc(100dvh-4rem)] lg:h-[calc(100dvh-3rem)]">
+      {/* Header */}
+      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Sessions</h1>
           <p className="text-muted-foreground mt-1 text-sm sm:text-base">
@@ -116,13 +120,14 @@ function SessionsPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit mb-6">
+      {/* Tabs */}
+      <div className="shrink-0 flex gap-1 p-1 bg-muted rounded-lg w-full sm:w-fit mb-6">
         {(["active", "completed", "reviewed"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              "px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize",
+              "flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-medium transition-colors capitalize",
               tab === t
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
@@ -136,22 +141,26 @@ function SessionsPage() {
         ))}
       </div>
 
-      {tab === "active" && (
-        <ActiveList requests={active} threadByRequest={threadByRequest} />
-      )}
-      {tab === "completed" && (
-        <SessionList
-          sessions={completed}
-          emptyMessage="No completed sessions yet. Once a tutor marks a session complete, it shows up here."
-        />
-      )}
-      {tab === "reviewed" && (
-        <SessionList
-          sessions={reviewed}
-          emptyMessage="You have not reviewed any sessions yet."
-        />
-      )}
-    </>
+      {/* Scroll region. min-h-0 is required so the flex child can
+          shrink below its content and overflow-y-auto takes over. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {tab === "active" && (
+          <ActiveList requests={active} threadByRequest={threadByRequest} />
+        )}
+        {tab === "completed" && (
+          <SessionList
+            sessions={completed}
+            emptyMessage="No completed sessions yet. Once a tutor marks a session complete, it shows up here."
+          />
+        )}
+        {tab === "reviewed" && (
+          <SessionList
+            sessions={reviewed}
+            emptyMessage="You have not reviewed any sessions yet."
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -163,10 +172,14 @@ function ActiveList({
   threadByRequest: Record<number, number>;
 }) {
   if (requests.length === 0) {
+    // h-full centers the empty state in the scroll region instead of
+    // hugging the top.
     return (
-      <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
-        <h3 className="text-lg font-semibold mb-2">No active sessions</h3>
-        <p className="text-muted-foreground mb-6">
+      <div className="h-full flex flex-col items-center justify-center text-center px-4 py-12 bg-card border border-dashed border-border rounded-xl">
+        <h3 className="text-base sm:text-lg font-semibold mb-2">
+          No active sessions
+        </h3>
+        <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md">
           Post a request and accept a tutor to start one.
         </p>
         <Link
@@ -179,7 +192,7 @@ function ActiveList({
     );
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-2">
       {requests.map((r) => {
         const threadId = threadByRequest[r.id];
         return (
@@ -231,13 +244,15 @@ function SessionList({
 }) {
   if (sessions.length === 0) {
     return (
-      <div className="text-center py-20 bg-card border border-dashed border-border rounded-xl">
-        <p className="text-muted-foreground">{emptyMessage}</p>
+      <div className="h-full flex flex-col items-center justify-center text-center px-4 py-12 bg-card border border-dashed border-border rounded-xl">
+        <p className="text-sm sm:text-base text-muted-foreground max-w-md">
+          {emptyMessage}
+        </p>
       </div>
     );
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-2">
       {sessions.map((s) => (
         <Link
           key={s.id}
