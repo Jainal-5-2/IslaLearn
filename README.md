@@ -486,3 +486,16 @@ This catches Phase 10 regressions before step 22.
 - Video hosting (we link/embed, not host)
 - Topic progress: per-page granularity, quiz completion tracking, certificate/achievement badges
 - Paid requests: an offered_price field on Request and a settlement flow. Settlement is off-platform in any future version that adds it; the platform does not hold funds. Escrow (hold until completion, refund on cancel) requires a payment provider with business registration (PayMongo, Xendit) and is deferred further.
+
+### Known limitations (v1)
+
+**1:1 completion is tutee-only.** Only the tutee can mark a 1:1 request complete. This protects tutees from a tutor completing a session that never happened, but it leaves two gaps for tutors:
+
+- If the tutee ghosts after accepting, and no session happens, the tutor's protection is `POST /api/requests/{id}/cancel-accepted/` (Phase 10: either party, only while no `Session` exists). That path closes the engagement but does not create a reviewable session.
+- If the session happened but the tutee never marks it complete, there is no tutor-side path to close it out in v1. Mitigation is manual (message the tutee, or contact the admin). The planned v2 fix is an inactivity sweep that closes accepted requests with no `Session` and no message activity after N days, carrying a `closed_reason` so the UI can distinguish "expired" from "cancelled."
+
+Tutor-side completion is not planned. The tutee is the customer; the asymmetry is intentional.
+
+**Tutee can avoid completing a session to dodge settlement.** Only the tutee can mark a 1:1 request complete, which is what creates the `Session` row that later settlement would key off. Once a `Session` exists, the request cannot be cancelled by either party (the Phase 10 cancel-accepted endpoint is scoped to "no `Session` exists"), and the thread is read-only. The gap is the window before completion: a tutee who received help can simply never mark the request complete, then cancel the accepted request (Phase 10, either party, while no `Session` exists) to avoid paying.
+
+This is not exploitable in v1 because no money moves. It must be addressed before any paid flow ships. The likely shape is: settlement is triggered by `Session` creation, not by `Request.status`, and the tutor's "mark complete" path (deferred, see above) becomes the dispute resolution when the tutee refuses. Refund logic is out of scope until payments exist.
