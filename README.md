@@ -450,8 +450,6 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 
 - **Anything else found while building Phases 6-9.** Reserve the phase for this; do not pre-close the list.
 
-**Ordering note:** B1 and B3 are independent of the broadcast and cancel work and should land first, since they are small, have isolated tests, and unblock the Phase 11 smoke checklist's "delete page 2, add a new page" and "read to the end via sidebar" steps. Broadcast terminal state is the largest item and should land before cancel-accepted, because cancel-accepted's "no `Session` exists" guard should be consistent with the new completed-broadcast guards. Cancel-accepted is last.
-
 ---
 
 **Phase 11 — Seed & Launch Prep**
@@ -459,7 +457,6 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 **Step 0 — Smoke-test checklist before inviting anyone:**
 - Create a topic with 3 pages (text, video, quiz).
 - Delete page 2, add a new page (this is B5).
-- Read to the end via sidebar (this is B3).
 - Complete the topic.
 - Post a request, apply as a second account, accept.
 - Verify the Session Page Active tab shows it.
