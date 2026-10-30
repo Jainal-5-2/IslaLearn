@@ -153,9 +153,6 @@ function BroadcastsPage() {
 function BroadcastCard({ broadcast }: { broadcast: Broadcast }) {
   const isFull = broadcast.is_full;
   const joined = !!broadcast.my_participation;
-
-  // Three reachable states in this list (cancelled is filtered out by
-  // the API): completed, ended but unmarked, and upcoming.
   const isCompleted = broadcast.is_completed;
   const isPast = new Date(broadcast.scheduled_at).getTime() < Date.now();
   const isEnded = !isCompleted && isPast;
@@ -185,7 +182,7 @@ function BroadcastCard({ broadcast }: { broadcast: Broadcast }) {
             Joined
           </span>
         )}
-        {isFull && !joined && !isCompleted && (
+        {isFull && !joined && !isCompleted && !isEnded && (
           <span className="text-xs font-medium px-2 py-1 bg-muted text-muted-foreground rounded-md">
             Full
           </span>

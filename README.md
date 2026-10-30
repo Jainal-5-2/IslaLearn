@@ -423,7 +423,7 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 
 **Goal:** The accumulated bugs, including the ones already identified. This is a buffer phase, not a fixed list; expect it to grow while Phases 6-9 are built.
 
-**Status notes (keep this section honest as items close):**
+**Status notes:**
 
 - **B5 — topic page order collision.** Already fixed in the code. `TopicPageListCreateView.perform_create` computes the next order as `last_page.order + 1` over the highest-order page, not `pages.length + 1`, so a gap left by a delete does not collide. No action needed; the earlier description was stale. A regression test that deletes a middle page and then adds a new one would be cheap insurance if this phase is otherwise short on work.
 - **Request detail report button.** Already shipped. `ReportButton` is rendered in every non-owner state on `/requests/[id]`. Note, not task.
@@ -431,7 +431,7 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 
 **Open items:**
 
-- **Broadcast completion as a terminal state.**
+- **Broadcast completion as a terminal state.** `[DONE]`
   - Model: add `Broadcast.completed_at` (nullable datetime). Migration with a backfill from `Session.completed_at` where `session_type="broadcast"`. The field is distinct from `is_cancelled`; a broadcast can be neither, cancelled, or completed, but not both cancelled and completed.
   - `BroadcastCompleteView`: set `completed_at` inside the existing `select_for_update` transaction. Idempotent: a second call returns the existing `Session` with 200 and does not overwrite `completed_at`.
   - Guards: `BroadcastJoinView`, `BroadcastRoomUrlView`, and `BroadcastCancelView` reject when `completed_at is not None` with a 400 and a message naming the state ("This broadcast has already ended"). `BroadcastLeaveView` stays idempotent and does not need the guard, since leaving a completed broadcast is harmless.

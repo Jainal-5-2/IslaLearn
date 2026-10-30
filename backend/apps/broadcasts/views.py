@@ -16,17 +16,10 @@ from .serializers import (
 
 
 def _visible_broadcasts():
-    """
-    The base queryset: not cancelled. Annotated with participant_count
-    so list and detail serializers do not each fire a COUNT query.
-    Prefetches sessions so the list serializer's is_completed and
-    completed_at do not fire one query per row.
-    """
     return (
         Broadcast.objects.filter(is_cancelled=False)
         .annotate(_participant_count=Count("participants"))
         .select_related("tutor", "subject")
-        .prefetch_related("sessions")
     )
 
 

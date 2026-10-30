@@ -11,6 +11,7 @@ import {
   XCircle,
   LogOut,
   AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import {
   getBroadcast,
@@ -140,13 +141,15 @@ function BroadcastDetailPage() {
   const isTutor = broadcast.is_tutor;
   const isParticipant = !!broadcast.my_participation;
   const isCancelled = broadcast.is_cancelled;
+  const isCompleted = broadcast.completed_at !== null;
   const isFull = broadcast.is_full;
   const scheduled = new Date(broadcast.scheduled_at);
   const isPast = scheduled.getTime() < Date.now();
 
-  const canJoin = broadcast.can_join && !isCancelled && !isPast;
+  const canJoin = broadcast.can_join && !isCancelled && !isPast && !isCompleted;
   const canLeave = isParticipant && !isCancelled;
-  const canEnterRoom = (isTutor || isParticipant) && !isCancelled;
+  const canEnterRoom =
+    (isTutor || isParticipant) && !isCancelled && !isCompleted;
 
   // Who can this user review? For a broadcast, everyone except
   // themselves: the tutor plus all participants. The backend re-checks
@@ -185,17 +188,23 @@ function BroadcastDetailPage() {
               Cancelled
             </span>
           )}
+          {isCompleted && !isCancelled && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500/10 text-green-600 rounded-md">
+              <CheckCircle2 className="h-3 w-3" />
+              Completed
+            </span>
+          )}
           {isTutor && (
             <span className="text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
               Your broadcast
             </span>
           )}
-          {isParticipant && !isCancelled && (
+          {isParticipant && !isCancelled && !isCompleted && (
             <span className="text-xs font-medium px-2 py-1 bg-green-500/10 text-green-600 rounded-md">
               Joined
             </span>
           )}
-          {isFull && !isParticipant && !isTutor && !isCancelled && (
+          {isFull && !isParticipant && !isTutor && !isCancelled && !isCompleted && (
             <span className="text-xs font-medium px-2 py-1 bg-muted text-muted-foreground rounded-md">
               Full
             </span>
@@ -250,7 +259,17 @@ function BroadcastDetailPage() {
           </div>
         )}
 
-        {isPast && !isCancelled && (
+        {isCompleted && !isCancelled && (
+          <div className="flex items-start gap-2 text-sm text-green-700 dark:text-green-400 bg-green-500/10 p-3 rounded-lg mb-4">
+            <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+            <p>
+              This broadcast has ended. The room is closed and no new
+              participants can join.
+            </p>
+          </div>
+        )}
+
+        {isPast && !isCancelled && !isCompleted && (
           <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg mb-4">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <p>
@@ -296,7 +315,7 @@ function BroadcastDetailPage() {
             </button>
           )}
 
-          {isTutor && !isCancelled && (
+          {isTutor && !isCancelled && !isCompleted && (
             <button
               onClick={handleCancel}
               disabled={cancelling}
@@ -307,7 +326,7 @@ function BroadcastDetailPage() {
             </button>
           )}
 
-          {!isTutor && !isCancelled && (
+          {!isTutor && !isCancelled && !isCompleted && (
             <ReportButton
               target={{ target_broadcast: broadcast.id }}
               label="Report broadcast"
@@ -322,7 +341,7 @@ function BroadcastDetailPage() {
           targetId={broadcast.id}
           session={broadcast.session ?? null}
           reviewableUsers={reviewableUsers}
-          canComplete={true}
+          canComplete={!isCompleted}
           onSessionChanged={refresh}
         />
       )}
