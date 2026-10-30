@@ -431,17 +431,6 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 
 **Open items:**
 
-- **B1 — topic create response shows locked pages to owner.**
-  - Symptom: `POST /api/topics/` returns `TopicDetailSerializer` with a `progress_by_topic` context that `TopicListCreateView.create` never populates. `TopicPageSerializer._progress_for` then falls back to a DB query, finds no progress for the owner (owners do not get progress rows), and marks pages past `free_page_count` as locked. The owner sees their own pages locked in the create response.
-  - Fix: in `TopicListCreateView.create`, build the read serializer context with `progress_by_topic = {}` before constructing `TopicDetailSerializer`. An empty dict tells `_progress_for` "the owner has no progress" without a DB query, and `TopicPageSerializer.get_is_locked` short-circuits to `False` for `request.user == obj.topic.created_by` before consulting progress anyway.
-  - Test: as the owner, `POST /api/topics/` with a topic that will have more than `free_page_count` pages; assert every page in the response has `is_locked: false` and a non-empty `content`. The current test suite does not cover the create response's page shape.
-
-- **B3 — reader finish jump guard.**
-  - Symptom: `handleFinish` in `app/(focused)/topics/[id]/read/page.tsx` POSTs `recordProgress(topic.id, activePageIndex)`. When the user reached the last page via the sidebar after navigating backward or jumping around, `activePageIndex` is higher than the stored `last_page_index + 1`, and `TopicProgressView` rejects the write with "Progress cannot jump more than one page at a time." The "Finished" click silently fails (the `.catch(() => {})` swallows it) and the completion never records.
-  - Fix (recommended): walk the indexes on finish. Loop from `progressLastPageIndex + 1` to `activePageIndex`, awaiting each `recordProgress(topic.id, i)`. The guard stays, the high-water mark reaches the last page, and completion flips. Cost is up to `page_count - 1` sequential POSTs on one action; acceptable for topic-sized page counts.
-  - Alternative: drop the jump guard in `TopicProgressView`. Simpler, but weakens the "monotonic reading" invariant and lets a client set the high-water mark past unread pages. Not recommended without a replacement check.
-  - Test: in `TopicProgressTests`, add a case that walks to page 3 via single-page writes, navigates back to page 1 (monotonic, stays at 3), then walks to the last page one index at a time from 3 upward, and asserts `is_completed` flips and `completed_at` is set. The bug is client-side, so the backend test proves the sequence works; the reader change is verified manually.
-
 - **Broadcast completion as a terminal state.**
   - Model: add `Broadcast.completed_at` (nullable datetime). Migration with a backfill from `Session.completed_at` where `session_type="broadcast"`. The field is distinct from `is_cancelled`; a broadcast can be neither, cancelled, or completed, but not both cancelled and completed.
   - `BroadcastCompleteView`: set `completed_at` inside the existing `select_for_update` transaction. Idempotent: a second call returns the existing `Session` with 200 and does not overwrite `completed_at`.
