@@ -79,14 +79,19 @@ class TopicListCreateView(generics.ListCreateAPIView):
         write_serializer.is_valid(raise_exception=True)
         topic = write_serializer.save(created_by=request.user)
 
-        read_serializer = TopicDetailSerializer(
-            topic, context=self.get_serializer_context()
-        )
+        # Populate progress_by_topic so TopicPageSerializer._progress_for
+        # does not fall through to a DB query. The topic's owner has no
+        # progress row (owners never get one), and an empty dict says so
+        # without a query. get_is_locked also short-circuits on owner
+        # before consulting progress, so this is belt and suspenders, but
+        # it keeps the create response's context shape identical to GET's.
+        context = self.get_serializer_context()
+        context["progress_by_topic"] = {}
+        read_serializer = TopicDetailSerializer(topic, context=context)
         headers = self.get_success_headers(read_serializer.data)
         return Response(
             read_serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
-
 
 class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Topic.objects.select_related("subject", "created_by").prefetch_related(

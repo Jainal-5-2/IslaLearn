@@ -216,6 +216,47 @@ class TopicProgressTests(APITestCase):
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
         self.assertEqual(progress.last_page_index, 0)
 
+    def test_walk_from_high_water_mark_to_last_page_flips_completion(self):
+        """
+        Regression for the reader's finish flow (B3).
+
+        A reader can arrive at the last page with the stored high-water
+        mark behind it: rapid Next clicks coalesce the 500ms debounced
+        writes, and failed writes leave the mark stale. The reader's
+        handleFinish then walks from progressLastPageIndex + 1 up to
+        activePageIndex one index at a time, because TopicProgressView
+        rejects a single POST that jumps more than one page.
+
+        This test proves the server accepts that walk and flips
+        is_completed. The client change is verified manually.
+        """
+        self._login(self.reader)
+        # Walk to index 2 one page at a time (page 3 of 5).
+        self._walk_up_to(2)
+        progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
+        self.assertEqual(progress.last_page_index, 2)
+        self.assertFalse(progress.is_completed)
+
+        # Navigate backward to index 0. Monotonic: stays at 2.
+        backward = self.client.post(self.url, {"last_page_index": 0})
+        self.assertEqual(backward.status_code, status.HTTP_200_OK)
+        self.assertEqual(backward.data["last_page_index"], 2)
+
+        # Walk forward from the high-water mark (2) to the last index
+        # (4) one step at a time, matching handleFinish's loop.
+        for index in range(3, 5):
+            step = self.client.post(self.url, {"last_page_index": index})
+            self.assertEqual(
+                step.status_code,
+                status.HTTP_200_OK,
+                f"index {index} rejected: {step.data}",
+            )
+
+        progress.refresh_from_db()
+        self.assertEqual(progress.last_page_index, 4)
+        self.assertTrue(progress.is_completed)
+        self.assertIsNotNone(progress.completed_at)
+
 
 class TopicDetailProgressTests(APITestCase):
     """
@@ -508,3 +549,86 @@ class TopicUnlockTests(APITestCase):
             ).count(),
             1,
         )
+
+
+class TopicCreateResponseTests(APITestCase):
+    """
+    Covers the shape of POST /api/topics/ for the owner.
+
+    Invariants:
+      - The create response uses TopicDetailSerializer's shape.
+      - progress is null for the owner.
+      - pages is empty at create time (the client adds pages afterward
+        via the pages endpoint).
+      - After adding pages, a GET as the owner shows every page unlocked
+        and content intact, regardless of free_page_count.
+
+    B1 (create response shows locked pages to owner) was never
+    reachable in the current code: get_is_locked short-circuits on the
+    owner before consulting progress. The create view also injects an
+    empty progress_by_topic so _progress_for does not fall back to a
+    DB query. These tests document both.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="createowner", password="pass-co-1", email="co@example.com"
+        )
+        self.subject = Subject.objects.create(name="CreateResponse")
+        self.url = reverse("topic-list")
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_create_response_is_detail_shape(self):
+        self._login(self.owner)
+        response = self.client.post(
+            self.url,
+            {
+                "subject": self.subject.id,
+                "title": "New topic",
+                "description": "desc",
+                "is_published": True,
+                "free_page_count": 1,
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["title"], "New topic")
+        self.assertEqual(response.data["created_by"]["id"], self.owner.id)
+        self.assertIsNone(response.data["progress"])
+        self.assertEqual(response.data["pages"], [])
+
+    def test_owner_pages_not_locked_after_adding_pages(self):
+        self._login(self.owner)
+        create = self.client.post(
+            self.url,
+            {
+                "subject": self.subject.id,
+                "title": "Locked?",
+                "description": "",
+                "is_published": True,
+                "free_page_count": 1,
+            },
+        )
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED)
+        topic_id = create.data["id"]
+
+        # free_page_count=1, so pages 2 and 3 would be locked for a
+        # reader. The owner must never see them locked.
+        for i in range(1, 4):
+            added = self.client.post(
+                reverse("topic-page-list", args=[topic_id]),
+                {
+                    "page_type": "text",
+                    "content": {"body": f"Page {i}"},
+                },
+                format="json",
+            )
+            self.assertEqual(added.status_code, status.HTTP_201_CREATED)
+
+        response = self.client.get(reverse("topic-detail", args=[topic_id]))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["pages"]), 3)
+        for page in response.data["pages"]:
+            self.assertFalse(page["is_locked"])
+            self.assertTrue(page["content"])

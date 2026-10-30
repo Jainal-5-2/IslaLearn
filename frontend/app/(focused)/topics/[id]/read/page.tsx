@@ -124,7 +124,7 @@ function TopicReaderPage() {
         .then((updated) => {
           setProgressLastPageIndex(updated.last_page_index);
         })
-        .catch(() => {});
+        .catch(() => { });
       progressTimerRef.current = null;
     }, PROGRESS_DEBOUNCE_MS);
 
@@ -160,7 +160,7 @@ function TopicReaderPage() {
         .then((updated) => {
           setProgressLastPageIndex(updated.last_page_index);
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }
 
@@ -182,7 +182,14 @@ function TopicReaderPage() {
     if (!topic) return;
     setFinishing(true);
     try {
-      await recordProgress(topic.id, activePageIndex).catch(() => {});
+      // Walk from the stored high-water mark up to the active page one
+      // index at a time. TopicProgressView rejects a single POST that
+      // jumps more than one page, so a reader whose debounced writes
+      // coalesced or failed would otherwise fail to record completion
+      // silently (the old .catch(() => {}) swallowed the 400).
+      for (let i = progressLastPageIndex + 1; i <= activePageIndex; i++) {
+        await recordProgress(topic.id, i).catch(() => { });
+      }
       router.push(`/topics/${topic.id}`);
     } finally {
       setFinishing(false);
