@@ -121,6 +121,8 @@ class BroadcastCancelView(APIView):
 
         if broadcast.tutor_id != request.user.id:
             raise PermissionDenied("Only the tutor can cancel this broadcast.")
+        if broadcast.completed_at is not None:
+            raise ValidationError("This broadcast has already ended.")
         if broadcast.is_cancelled:
             raise ValidationError("This broadcast is already cancelled.")
 
@@ -158,6 +160,8 @@ class BroadcastJoinView(APIView):
 
             if broadcast.is_cancelled:
                 raise ValidationError("This broadcast has been cancelled.")
+            if broadcast.completed_at is not None:
+                raise ValidationError("This broadcast has already ended.")
             if broadcast.tutor_id == request.user.id:
                 raise ValidationError(
                     "You are the tutor. You do not need to join."
@@ -227,6 +231,8 @@ class BroadcastRoomUrlView(APIView):
 
         if broadcast.is_cancelled:
             raise ValidationError("This broadcast has been cancelled.")
+        if broadcast.completed_at is not None:
+            raise ValidationError("This broadcast has already ended.")
         if not broadcast.room_url:
             raise ValidationError("This broadcast has no room yet.")
 

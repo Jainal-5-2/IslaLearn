@@ -329,3 +329,124 @@ class BroadcastCancelTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         ids = [row["id"] for row in response.data["results"]]
         self.assertNotIn(self.broadcast.id, ids)
+        
+class BroadcastCompletedStateTests(APITestCase):
+    """
+    Covers terminal-state guards on a completed broadcast.
+
+    Invariants:
+      - join, room-url, cancel all return 400 on a completed broadcast.
+      - leave stays idempotent (204) on a completed broadcast.
+      - a completed broadcast still appears in ?past=true.
+      - a completed broadcast does not appear in the upcoming list.
+      - the list serializer's is_completed comes from completed_at, not
+        from sessions.exists().
+      - a cancelled broadcast stays hidden from both lists.
+    """
+
+    def setUp(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        from apps.sessions.models import Session
+
+        self.tutor = User.objects.create_user(
+            username="ctutor", password="pass-ct-1", email="ct@example.com"
+        )
+        self.tutee = User.objects.create_user(
+            username="ctutee", password="pass-cu-1", email="cu@example.com"
+        )
+        self.subject = Subject.objects.create(name="CompletedState")
+        self.broadcast = Broadcast.objects.create(
+            tutor=self.tutor,
+            subject=self.subject,
+            title="Past session",
+            description="",
+            scheduled_at=timezone.now() - timedelta(hours=2),
+            room_url="https://whereby.example/room",
+            completed_at=timezone.now(),
+        )
+        self.session = Session.objects.create(
+            session_type="broadcast",
+            broadcast=self.broadcast,
+            completed_at=self.broadcast.completed_at,
+            marked_by=self.tutor,
+        )
+        self.join_url = reverse("broadcast-join", args=[self.broadcast.id])
+        self.leave_url = reverse("broadcast-leave", args=[self.broadcast.id])
+        self.room_url = reverse(
+            "broadcast-room-url", args=[self.broadcast.id]
+        )
+        self.cancel_url = reverse(
+            "broadcast-cancel", args=[self.broadcast.id]
+        )
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_join_completed_rejected(self):
+        self._login(self.tutee)
+        response = self.client.post(self.join_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_room_url_completed_rejected_for_tutor(self):
+        self._login(self.tutor)
+        response = self.client.get(self.room_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_room_url_completed_rejected_for_participant(self):
+        BroadcastParticipant.objects.create(
+            broadcast=self.broadcast, user=self.tutee
+        )
+        self._login(self.tutee)
+        response = self.client.get(self.room_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cancel_completed_rejected(self):
+        self._login(self.tutor)
+        response = self.client.post(self.cancel_url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_leave_completed_stays_idempotent(self):
+        self._login(self.tutee)
+        response = self.client.delete(self.leave_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_completed_appears_in_past_list(self):
+        response = self.client.get(reverse("broadcast-list"), {"past": "true"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(self.broadcast.id, ids)
+
+    def test_completed_does_not_appear_in_upcoming_list(self):
+        response = self.client.get(reverse("broadcast-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertNotIn(self.broadcast.id, ids)
+
+    def test_list_is_completed_comes_from_column(self):
+        response = self.client.get(reverse("broadcast-list"), {"past": "true"})
+        row = next(
+            r for r in response.data["results"] if r["id"] == self.broadcast.id
+        )
+        self.assertTrue(row["is_completed"])
+        self.assertIsNotNone(row["completed_at"])
+
+    def test_list_is_completed_false_when_column_null_even_if_session(self):
+        # Defensive: the serializer must read completed_at, not
+        # sessions.exists(). If these ever disagree, the column wins.
+        self.broadcast.completed_at = None
+        self.broadcast.save(update_fields=["completed_at"])
+        response = self.client.get(reverse("broadcast-list"), {"past": "true"})
+        row = next(
+            r for r in response.data["results"] if r["id"] == self.broadcast.id
+        )
+        self.assertFalse(row["is_completed"])
+        self.assertIsNone(row["completed_at"])
+
+    def test_cancelled_hidden_from_both_lists(self):
+        self.broadcast.is_cancelled = True
+        self.broadcast.save(update_fields=["is_cancelled"])
+        for params in ({}, {"past": "true"}):
+            response = self.client.get(reverse("broadcast-list"), params)
+            ids = [row["id"] for row in response.data["results"]]
+            self.assertNotIn(self.broadcast.id, ids)

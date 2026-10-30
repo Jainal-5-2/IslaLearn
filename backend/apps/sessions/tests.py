@@ -171,6 +171,19 @@ class BroadcastCompleteTests(APITestCase):
         second = self.client.post(self.url)
         self.assertEqual(first.status_code, status.HTTP_201_CREATED)
         self.assertEqual(second.status_code, status.HTTP_200_OK)
+        
+    def test_complete_sets_completed_at_and_is_idempotent(self):
+        self._login(self.tutor)
+        first = self.client.post(self.url)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.broadcast.refresh_from_db()
+        first_completed_at = self.broadcast.completed_at
+        self.assertIsNotNone(first_completed_at)
+
+        second = self.client.post(self.url)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.broadcast.refresh_from_db()
+        self.assertEqual(self.broadcast.completed_at, first_completed_at)
 
 
 class SessionParticipantsTests(APITestCase):

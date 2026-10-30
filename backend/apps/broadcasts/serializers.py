@@ -70,15 +70,12 @@ class BroadcastListSerializer(serializers.ModelSerializer):
         return obj.participants.filter(user=user).exists()
 
     def get_is_completed(self, obj):
-        # Uses the prefetched sessions list from the view, so this does
-        # not fire a query per row.
-        return obj.sessions.exists()
+        return obj.completed_at is not None
 
     def get_completed_at(self, obj):
-        session = obj.sessions.first()
-        if session is None or session.completed_at is None:
+        if obj.completed_at is None:
             return None
-        return session.completed_at.isoformat()
+        return obj.completed_at.isoformat()
 
 
 class BroadcastDetailSerializer(serializers.ModelSerializer):
@@ -146,6 +143,8 @@ class BroadcastDetailSerializer(serializers.ModelSerializer):
         if obj.tutor_id == user.id:
             return False
         if obj.is_cancelled:
+            return False
+        if obj.completed_at is not None:
             return False
         if self.get_my_participation(obj):
             return False

@@ -41,6 +41,15 @@ class Broadcast(models.Model):
 
     is_cancelled = models.BooleanField(default=False)
 
+    # Set when the tutor marks the broadcast complete. Distinct from
+    # is_cancelled: a broadcast is neither, cancelled, or completed, but
+    # not both cancelled and completed. Drives the join/room-url/cancel
+    # guards and the "Completed" badge. The Session row created by
+    # BroadcastCompleteView is the review anchor; this column is the
+    # broadcast's own terminal-state marker, so those two facts cannot
+    # disagree.
+    completed_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

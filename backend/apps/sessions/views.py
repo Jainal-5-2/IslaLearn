@@ -106,15 +106,29 @@ class BroadcastCompleteView(APIView):
             )
 
         with transaction.atomic():
-            broadcast = Broadcast.objects.select_for_update().get(pk=pk)
-            existing = Session.objects.filter(
-                session_type="broadcast", broadcast=broadcast
-            ).first()
-            if existing is not None:
-                serializer = SessionSerializer(
-                    existing, context={"request": request}
+            broadcast = (
+                Broadcast.objects.select_for_update()
+                .select_related("tutor")
+                .get(pk=pk)
+            )
+            if broadcast.is_cancelled:
+                raise ValidationError(
+                    "A cancelled broadcast cannot be marked complete."
                 )
-                return Response(serializer.data, status=status.HTTP_200_OK)
+            if broadcast.completed_at is not None:
+                existing = Session.objects.filter(
+                    session_type="broadcast", broadcast=broadcast
+                ).first()
+                if existing is not None:
+                    serializer = SessionSerializer(
+                        existing, context={"request": request}
+                    )
+                    return Response(
+                        serializer.data, status=status.HTTP_200_OK
+                    )
+                raise ValidationError(
+                    "This broadcast is already marked complete."
+                )
 
             session = Session.objects.create(
                 session_type="broadcast",
@@ -122,7 +136,9 @@ class BroadcastCompleteView(APIView):
                 completed_at=timezone.now(),
                 marked_by=request.user,
             )
-
+            broadcast.completed_at = session.completed_at
+            broadcast.save(update_fields=["completed_at"])
+            
         serializer = SessionSerializer(session, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
