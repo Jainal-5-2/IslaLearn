@@ -1,10 +1,12 @@
 from django.db import models, transaction
+from django.db.models import Exists, OuterRef
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.messages.models import Thread
+from apps.sessions.models import Session
 
 from .models import Application, Request
 from .serializers import (
@@ -38,22 +40,53 @@ class RequestListCreateView(generics.ListCreateAPIView):
         elif self.request.method == "GET" and status_filter == "open":
             queryset = queryset.exclude(tutee=self.request.user)
 
-        # ?accepted=true returns accepted-but-not-completed requests
-        # where the user is either the tutee or the accepted tutor.
+        # ?accepted=true returns accepted-but-not-yet-completed requests
+        # where the user is either the tutee or the accepted tutor. This
+        # is the /sessions Active tab's data source.
+        #
+        # Three conditions must hold for a request to be "active":
+        #
+        # 1. It has an accepted application. Request.status == "closed"
+        #    alone is not enough: RequestCloseView also sets
+        #    status="closed" when the tutee manually closes an open
+        #    request, and that path leaves no accepted application. So
+        #    both the tutee branch and the tutor branch require
+        #    applications__status == "accepted".
+        #
+        # 2. It has no one_on_one Session row. Once the tutee marks the
+        #    request complete, a Session row exists and the request
+        #    belongs only in the Completed tab. Without this exclusion,
+        #    a completed request appears in both Active and Completed.
+        #
+        # 3. The user is a party to it: either the tutee, or the tutor
+        #    whose application was accepted. Non-parties must not see it.
+        #
         # The tutor and status conditions MUST live in the same Q so
-        # they constrain the same joined Application row; splitting
-        # them into separate .filter() calls creates two independent
-        # joins and lets a rejected application satisfy the tutor
-        # condition while a different accepted application satisfies
-        # the status condition.
+        # they constrain the same joined Application row; splitting them
+        # into separate .filter() calls creates two independent joins
+        # and lets a rejected application satisfy the tutor condition
+        # while a different accepted application satisfies the status
+        # condition.
         if self.request.query_params.get("accepted") == "true":
             queryset = queryset.filter(status="closed").filter(
-                models.Q(tutee=self.request.user)
+                models.Q(
+                    tutee=self.request.user,
+                    applications__status="accepted",
+                )
                 | models.Q(
                     applications__tutor=self.request.user,
                     applications__status="accepted",
                 )
             ).distinct()
+
+            queryset = queryset.annotate(
+                _has_one_on_one_session=Exists(
+                    Session.objects.filter(
+                        request=OuterRef("pk"),
+                        session_type="one_on_one",
+                    )
+                )
+            ).filter(_has_one_on_one_session=False)
 
         return queryset
 
@@ -74,7 +107,6 @@ class RequestListCreateView(generics.ListCreateAPIView):
         return Response(
             read_serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
-
 
 class RequestDetailView(generics.RetrieveUpdateAPIView):
     queryset = Request.objects.select_related("tutee", "subject").prefetch_related(
