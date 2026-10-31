@@ -1,20 +1,26 @@
 from datetime import timedelta
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
+from django.test import TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.broadcasts.models import Broadcast, BroadcastParticipant
-from apps.messages.models import Message, Thread
+from apps.messages.models import Thread
 from apps.requests.models import Application, Request
 from apps.sessions.models import Review, Session
-from apps.topics.models import Subject
+from apps.topics.models import Subject, Topic
+from config.asgi import application
 
 from .models import Notification
-from .services import notify
+from .serializers import NotificationSerializer
+from .services import notify, user_group_name
 
 User = get_user_model()
 
@@ -29,6 +35,12 @@ def _make_accepted_request(tutee, tutor, subject):
     req.status = "closed"
     req.save(update_fields=["status"])
     return req
+
+
+def _token_for(user):
+    from rest_framework_simplejwt.tokens import AccessToken
+
+    return str(AccessToken.for_user(user))
 
 
 class NotifyHelperTests(APITestCase):
@@ -101,9 +113,7 @@ class NotifyHelperTests(APITestCase):
             )
 
     def test_two_targets_raises(self):
-        topic = __import__(
-            "apps.topics.models", fromlist=["Topic"]
-        ).Topic.objects.create(
+        topic = Topic.objects.create(
             subject=self.subject,
             created_by=self.actor,
             title="T",
@@ -148,8 +158,6 @@ class NotificationTargetConstraintTests(APITestCase):
                 )
 
     def test_two_targets_raises(self):
-        from apps.topics.models import Topic
-
         topic = Topic.objects.create(
             subject=self.subject,
             created_by=self.other,
@@ -743,8 +751,6 @@ class NotificationSerializerLinkTests(APITestCase):
         )
 
     def _link_and_label(self, notification):
-        from .serializers import NotificationSerializer
-
         data = NotificationSerializer(notification).data
         return data["target_link"], data["target_label"]
 
@@ -834,3 +840,121 @@ class NotificationSerializerLinkTests(APITestCase):
         link, label = self._link_and_label(n)
         self.assertEqual(link, f"/messages/{thread.id}")
         self.assertEqual(label, self.subject.name)
+
+
+class NotificationConsumerTests(TransactionTestCase):
+    """
+    Covers the NotificationConsumer handshake and the services._push
+    fan-out contract.
+
+    These tests are the only place where the group name produced by
+    services.user_group_name and the handler name notification_created
+    are checked against a real socket. A typo in either would otherwise
+    surface as "the bell does not update in realtime" and be debugged
+    from the browser console.
+
+    Invariants:
+      - No token -> refused (close 4401).
+      - A valid token -> connects.
+      - group_send to user_<id> -> the frame arrives as
+        {"type": "notification", "notification": ...}.
+      - group_send to another user's group -> nothing arrives.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="ncuser", password="pass-nc-1", email="nc@example.com"
+        )
+        self.other = User.objects.create_user(
+            username="ncother", password="pass-no-1", email="no@example.com"
+        )
+        self.subject = Subject.objects.create(name="WSNotify")
+        self.req = Request.objects.create(
+            tutee=self.user, subject=self.subject, description="Help"
+        )
+        self.notification = Notification.objects.create(
+            recipient=self.user,
+            actor=self.other,
+            kind="application_received",
+            target_request=self.req,
+        )
+
+    def _connect(self, path):
+        return WebsocketCommunicator(
+            application,
+            path,
+            headers=[(b"origin", b"http://localhost")],
+        )
+
+    def test_no_token_refused(self):
+        async def run():
+            comm = self._connect("/ws/notifications/")
+            connected, code = await comm.connect()
+            await comm.disconnect()
+            return connected, code
+
+        connected, code = async_to_sync(run)()
+        self.assertFalse(connected, f"connected with no token (code {code})")
+        self.assertEqual(code, 4401, f"expected 4401, got {code}")
+
+    def test_valid_token_connects(self):
+        token = _token_for(self.user)
+
+        async def run():
+            comm = self._connect(f"/ws/notifications/?token={token}")
+            connected, code = await comm.connect()
+            await comm.disconnect()
+            return connected, code
+
+        connected, code = async_to_sync(run)()
+        self.assertTrue(connected, f"refused with close code {code}")
+
+    def test_push_arrives_on_socket(self):
+        token = _token_for(self.user)
+
+        async def run():
+            comm = self._connect(f"/ws/notifications/?token={token}")
+            connected, code = await comm.connect()
+            assert connected, f"refused with close code {code}"
+
+            payload = NotificationSerializer(self.notification).data
+            await get_channel_layer().group_send(
+                user_group_name(self.user.id),
+                {"type": "notification.created", "notification": payload},
+            )
+
+            frame = await comm.receive_json_from(timeout=2)
+            await comm.disconnect()
+            return frame
+
+        frame = async_to_sync(run)()
+        self.assertEqual(frame["type"], "notification")
+        self.assertEqual(frame["notification"]["id"], self.notification.id)
+        self.assertEqual(frame["notification"]["kind"], "application_received")
+
+    def test_other_users_group_does_not_arrive(self):
+        token = _token_for(self.user)
+
+        async def run():
+            comm = self._connect(f"/ws/notifications/?token={token}")
+            connected, code = await comm.connect()
+            assert connected, f"refused with close code {code}"
+
+            # group_send to a different user's group. The open socket is
+            # in user_<self.user.id>, so this must not arrive.
+            payload = NotificationSerializer(self.notification).data
+            await get_channel_layer().group_send(
+                user_group_name(self.other.id),
+                {"type": "notification.created", "notification": payload},
+            )
+
+            received = await comm.receive_nothing(timeout=0.5)
+            await comm.disconnect()
+            return received
+
+        received = async_to_sync(run)()
+        # receive_nothing returns True when nothing arrived (the good
+        # case here) and False when a frame did. The variable is named
+        # `received` so the assert reads in the direction the primitive
+        # does, rather than as a double negative.
+        self.assertTrue(received, "frame leaked from another user's group")

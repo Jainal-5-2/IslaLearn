@@ -231,3 +231,24 @@ export type ThreadSummary = {
   is_open: boolean;
   created_at: string;
 };
+
+
+// ---------- Notifications ----------
+export type NotificationKind =
+  | "application_received"
+  | "application_accepted"
+  | "application_rejected"
+  | "session_completed"
+  | "review_received"
+  | "message_received";
+
+export type Notification = {
+  id: number;
+  kind: NotificationKind;
+  actor: User | null;
+  target_link: string;
+  target_label: string;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+};

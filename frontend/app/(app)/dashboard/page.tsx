@@ -26,6 +26,7 @@ import { QuickAction } from "@/components/quick-action";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { cn } from "@/lib/utils";
+import { NotificationBell } from "@/components/notification-bell";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -86,10 +87,17 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-2 sm:gap-4">
-          <button className="relative p-2 rounded-lg bg-card border border-border text-muted-foreground hover:text-foreground transition-colors">
-            <Bell className="h-5 w-5" />
-          </button>
-          <ThemeToggle />
+          {/* Below lg, AppShell's mobile header (lg:hidden) renders the
+              bell and the theme toggle. Render them here only at lg and
+              up, so the 640-1023px band sees exactly one of each. The
+              avatar is dashboard-only and does not appear in the mobile
+              header, so it stays unconditional at sm+. */}
+          <div className="hidden lg:block">
+            <NotificationBell />
+          </div>
+          <div className="hidden lg:block">
+            <ThemeToggle />
+          </div>
           <div className="h-10 w-10 rounded-full bg-accent/20 flex items-center justify-center text-sm font-bold text-accent">
             {user.username[0].toUpperCase()}
           </div>

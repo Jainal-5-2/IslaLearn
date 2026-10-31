@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/app-shell";
+import { NotificationProvider } from "@/components/notification-provider";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { getMe, isLoggedIn, logout, User } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -79,8 +80,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AppShell user={user} onLogout={handleLogout}>
-      {children}
-    </AppShell>
+    <NotificationProvider>
+      <AppShell user={user} onLogout={handleLogout}>
+        {children}
+      </AppShell>
+    </NotificationProvider>
   );
 }

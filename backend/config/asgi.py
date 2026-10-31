@@ -19,11 +19,14 @@ from channels.routing import ProtocolTypeRouter, URLRouter  # noqa: E402
 from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E402
 
 from apps.messages.middleware import JwtQueryAuthMiddleware  # noqa: E402
-from apps.messages.routing import websocket_urlpatterns  # noqa: E402
+from apps.messages.routing import websocket_urlpatterns as messages_ws  # noqa: E402
+from apps.notifications.routing import websocket_urlpatterns as notifications_ws  # noqa: E402
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
     "websocket": AllowedHostsOriginValidator(
-        JwtQueryAuthMiddleware(URLRouter(websocket_urlpatterns))
+        JwtQueryAuthMiddleware(
+            URLRouter(messages_ws + notifications_ws)
+        )
     ),
 })

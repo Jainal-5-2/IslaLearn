@@ -7,6 +7,7 @@ import { Logo } from "@/components/logo";
 import { Footer } from "@/components/footer";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notification-bell";
 
 interface AppShellProps {
   user: User;
@@ -43,7 +44,10 @@ export function AppShell({ user, onLogout, children }: AppShellProps) {
               Menu
             </button>
             <Logo size={32} showText={false} />
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <ThemeToggle />
+            </div>
           </div>
 
           {/* Page content */}

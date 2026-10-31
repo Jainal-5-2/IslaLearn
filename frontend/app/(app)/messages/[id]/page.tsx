@@ -43,6 +43,18 @@ function ThreadPage() {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState("");
 
+  // Touch devices have a soft keyboard without a Shift key, so Enter
+  // must insert a newline there and the send button is the only way to
+  // send. Fine-pointer devices keep Enter-to-send. Initial value is
+  // false (desktop behavior), which is correct for hydration; the
+  // effect flips it immediately on touch devices, before any user
+  // keydown can fire.
+  const [isCoarse, setIsCoarse] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsCoarse(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<number>(0);
   const firstScrollRef = useRef(true);
@@ -194,8 +206,7 @@ function ThreadPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, threadId, thread?.id]);
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitMessage() {
     const body = draft.trim();
     if (!body || sending) return;
     setSendError("");
@@ -216,6 +227,11 @@ function ThreadPage() {
     } finally {
       setSending(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void submitMessage();
   }
 
   if (loading) {
@@ -239,8 +255,8 @@ function ThreadPage() {
   const canSend = thread.is_open;
 
   return (
-    <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-8rem)] overflow-hidden">
-      <div className="flex items-center gap-3 mb-4 shrink-0">
+    <div className="max-w-3xl mx-auto flex flex-col h-[calc(100dvh-4rem)] lg:h-[calc(100dvh-3rem)] overflow-hidden">
+      <div className="flex items-center gap-3 mb-3 sm:mb-4 shrink-0">
         <Link
           href="/messages"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -250,7 +266,7 @@ function ThreadPage() {
         </Link>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-4 mb-4 shrink-0">
+      <div className="bg-card border border-border rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 shrink-0">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <h1 className="text-lg font-bold truncate flex items-center gap-2">
@@ -281,7 +297,7 @@ function ThreadPage() {
 
       <div
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto bg-card border border-border rounded-xl p-4 mb-4 space-y-3"
+        className="flex-1 min-h-0 overflow-y-auto bg-card border border-border rounded-xl p-3 sm:p-4 mb-3 sm:mb-4 space-y-3"
       >
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">
@@ -299,7 +315,7 @@ function ThreadPage() {
       </div>
 
       {!canSend && (
-        <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg mb-3 shrink-0">
+        <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg mb-2 sm:mb-3 shrink-0">
           <Lock className="h-4 w-4 mt-0.5 shrink-0" />
           <p>
             This conversation is closed. You can read the history but cannot
@@ -310,7 +326,7 @@ function ThreadPage() {
       )}
 
       <form
-        onSubmit={handleSend}
+        onSubmit={handleSubmit}
         className="bg-card border border-border rounded-xl p-3 shrink-0"
       >
         {sendError && (
@@ -323,23 +339,22 @@ function ThreadPage() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
+              // On touch devices Enter inserts a newline. The send
+              // button is the only way to send, since a soft keyboard
+              // has no Shift key to reach Shift+Enter.
+              if (isCoarse) return;
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (canSend && draft.trim() && !sending) {
-                  void handleSend(e as unknown as React.FormEvent);
-                }
+                void submitMessage();
               }
             }}
             rows={1}
             disabled={!canSend || sending}
-            placeholder={
-              canSend
-                ? "Type a message. Enter to send, Shift+Enter for newline."
-                : "This conversation is closed."
-            }
+            placeholder="Type a message."
+            enterKeyHint="enter"
             maxLength={2000}
             className={cn(
-              "flex-1 border border-border bg-background text-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none",
+              "flex-1 border border-border bg-background text-foreground rounded-lg px-3 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none",
               (!canSend || sending) && "opacity-60 cursor-not-allowed"
             )}
           />
@@ -352,7 +367,7 @@ function ThreadPage() {
             <Send className="h-4 w-4" />
           </button>
         </div>
-        <p className="text-xs text-muted-foreground mt-1 text-right">
+        <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 text-right">
           {draft.length}/2000
         </p>
       </form>
@@ -371,7 +386,7 @@ function MessageBubble({
     <div className={cn("flex", isMine ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[80%] rounded-2xl px-3 py-2",
+          "max-w-[85%] sm:max-w-[75%] rounded-2xl px-3 py-2",
           isMine
             ? "bg-accent text-accent-foreground rounded-br-sm"
             : "bg-muted text-foreground rounded-bl-sm"

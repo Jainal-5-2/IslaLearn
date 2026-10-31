@@ -45,6 +45,8 @@ export type {
   ThreadOtherParty,
   ThreadLastMessage,
   ThreadSummary,
+  Notification,
+  NotificationKind,
 } from "./types";
 
 // Auth
@@ -117,3 +119,11 @@ export {
 
 // Reports
 export { createReport } from "./reports";
+
+// Notifications
+export {
+  getNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  getNotificationSocketUrl,
+} from "./notifications";
