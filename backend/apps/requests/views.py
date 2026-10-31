@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.messages.models import Thread
+from apps.notifications.services import notify
 from apps.sessions.models import Session
 
 from .models import Application, Request
@@ -225,6 +226,13 @@ class RequestApplyView(generics.CreateAPIView):
 
         serializer.save(request=request_obj, tutor=self.request.user)
 
+        notify(
+            kind="application_received",
+            actor=self.request.user,
+            recipients=[request_obj.tutee],
+            target_request=request_obj,
+        )
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -284,5 +292,16 @@ class ApplicationDecisionView(generics.UpdateAPIView):
                 req.status = "closed"
                 req.save(update_fields=["status"])
                 Thread.objects.get_or_create(request=req)
+
+            notify(
+                kind=(
+                    "application_accepted"
+                    if new_status == "accepted"
+                    else "application_rejected"
+                ),
+                actor=request.user,
+                recipients=[application.tutor],
+                target_request=req,
+            )
 
         return Response(ApplicationSerializer(application).data)

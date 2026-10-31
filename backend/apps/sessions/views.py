@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.broadcasts.models import Broadcast
+from apps.notifications.services import notify
 from apps.requests.models import Application, Request
 
 from .models import Review, Session
@@ -77,6 +78,13 @@ class RequestCompleteView(APIView):
                 marked_by=request.user,
             )
 
+            notify(
+                kind="session_completed",
+                actor=request.user,
+                recipients=[accepted.tutor],
+                target_request=tutoring_request,
+            )
+
         serializer = SessionSerializer(session, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -138,7 +146,17 @@ class BroadcastCompleteView(APIView):
             )
             broadcast.completed_at = session.completed_at
             broadcast.save(update_fields=["completed_at"])
-            
+
+            notify(
+                kind="session_completed",
+                actor=request.user,
+                recipients=[
+                    p.user
+                    for p in broadcast.participants.select_related("user")
+                ],
+                target_broadcast=broadcast,
+            )
+
         serializer = SessionSerializer(session, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -167,6 +185,13 @@ class SessionReviewCreateView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         review = serializer.save(session=session, reviewer=request.user)
+
+        notify(
+            kind="review_received",
+            actor=request.user,
+            recipients=[review.reviewee],
+            target_review=review,
+        )
 
         return Response(
             ReviewSerializer(review).data, status=status.HTTP_201_CREATED

@@ -27,6 +27,9 @@ a reason, a constraint, or a trap.
 Do not add "I changed X because Y" notes to files. That belongs in the
 commit message.
 
+### Don't go overboard with code comments
+When adding comments, make it short and clear. This does not apply to comments used for auto generated documentation.
+
 ### Backend
 - Every app has `tests.py`. `python manage.py test apps.<app>` must pass
   after any change to that app.

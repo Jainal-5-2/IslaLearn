@@ -6,6 +6,8 @@ from rest_framework.exceptions import NotFound, PermissionDenied, ValidationErro
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.services import notify
+
 from .models import Message, Thread
 from .parties import thread_is_open, thread_parties
 from .serializers import (
@@ -108,6 +110,15 @@ class MessageListCreateView(APIView):
         serializer = MessageCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         message = serializer.save(thread=thread, sender=request.user)
+
+        notify(
+            kind="message_received",
+            actor=request.user,
+            recipients=[
+                p for p in thread_parties(thread) if p.id != request.user.id
+            ],
+            target_request=thread.request,
+        )
 
         payload = MessageSerializer(message).data
         channel_layer = get_channel_layer()
