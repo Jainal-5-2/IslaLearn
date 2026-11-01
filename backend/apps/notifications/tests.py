@@ -841,6 +841,16 @@ class NotificationSerializerLinkTests(APITestCase):
         self.assertEqual(link, f"/messages/{thread.id}")
         self.assertEqual(label, self.subject.name)
 
+    def test_engagement_cancelled_link(self):
+        n = Notification.objects.create(
+            recipient=self.user,
+            actor=self.actor,
+            kind="engagement_cancelled",
+            target_request=self.req,
+        )
+        link, label = self._link_and_label(n)
+        self.assertEqual(link, f"/requests/{self.req.id}")
+        self.assertEqual(label, self.subject.name)
 
 class NotificationConsumerTests(TransactionTestCase):
     """

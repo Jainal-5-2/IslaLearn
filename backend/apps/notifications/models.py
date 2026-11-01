@@ -34,6 +34,7 @@ class Notification(models.Model):
         ("application_received", "Application received"),
         ("application_accepted", "Application accepted"),
         ("application_rejected", "Application rejected"),
+        ("engagement_cancelled", "Engagement cancelled"),
         ("session_completed", "Session completed"),
         ("review_received", "Review received"),
         ("message_received", "Message received"),

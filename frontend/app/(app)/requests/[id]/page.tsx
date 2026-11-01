@@ -3,7 +3,16 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Pencil, Lock, Save, X, XCircle, MessageSquare } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Pencil,
+  Lock,
+  Save,
+  X,
+  XCircle,
+  MessageSquare,
+  Ban,
+} from "lucide-react";
 import {
   getRequest,
   getMe,
@@ -12,6 +21,7 @@ import {
   updateRequest,
   closeRequest,
   decideApplication,
+  cancelAcceptedRequest,
   TutoringRequest,
   ThreadSummary,
   Subject,
@@ -47,6 +57,10 @@ function RequestDetailPage() {
   const [error, setError] = useState("");
   const [deciding, setDeciding] = useState<number | null>(null);
   const [closing, setClosing] = useState(false);
+  
+  // Cancel engagement state
+  const [cancelling, setCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Edit mode
   const [editing, setEditing] = useState(false);
@@ -231,6 +245,27 @@ function RequestDetailPage() {
       showToast(e instanceof Error ? e.message : "Failed to update");
     } finally {
       setDeciding(null);
+    }
+  }
+
+  async function handleCancelAccepted() {
+    if (!req) return;
+    setCancelling(true);
+    try {
+      const updated = await cancelAcceptedRequest(req.id);
+      setReq(updated);
+      setShowCancelConfirm(false);
+      showToast("Engagement cancelled");
+      
+      // The thread becomes read-only. Fetch fresh data so the
+      // "Message" button reflects the reopened state.
+      refresh();
+    } catch (e) {
+      showToast(
+        e instanceof Error ? e.message : "Failed to cancel engagement"
+      );
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -487,6 +522,22 @@ function RequestDetailPage() {
               Message {thread.other_party?.username ?? "participant"}
             </Link>
           )}
+          
+          {/* The accepted tutor can cancel the engagement while there is no session. */}
+          {isAcceptedTutor &&
+            req.status === "closed" &&
+            !req.session && (
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(true)}
+                disabled={cancelling}
+                className="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-md border border-red-500/40 text-red-600 font-medium hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+              >
+                <Ban className="h-4 w-4" />
+                {cancelling ? "Cancelling..." : "Cancel engagement"}
+              </button>
+            )}
+
           <ReportButton
             target={{ target_request: req.id }}
             label="Report request"
@@ -573,6 +624,67 @@ function RequestDetailPage() {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {showCancelConfirm && (
+          <motion.div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            onClick={() => setShowCancelConfirm(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cancel-engagement-title"
+          >
+            <motion.div
+              className="w-full max-w-md bg-card text-card-foreground border border-border rounded-2xl shadow-lg p-6"
+              initial={{ opacity: 0, scale: 0.95, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 8 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-500/10 text-red-600 flex items-center justify-center shrink-0">
+                  <Ban className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h2
+                    id="cancel-engagement-title"
+                    className="text-lg font-semibold text-foreground"
+                  >
+                    Cancel this engagement?
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    You will be removed as the tutor. Your application goes
+                    back to rejected and you cannot re-apply to this
+                    request. The tutee will see it reopen and can pick
+                    another tutor. This cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-6">
+                <button
+                  onClick={() => setShowCancelConfirm(false)}
+                  disabled={cancelling}
+                  className="h-10 px-4 rounded-md border border-border hover:bg-muted font-medium disabled:opacity-50 transition-colors"
+                >
+                  Keep engagement
+                </button>
+                <button
+                  onClick={handleCancelAccepted}
+                  disabled={cancelling}
+                  className="h-10 px-4 rounded-md bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {cancelling ? "Cancelling..." : "Cancel engagement"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

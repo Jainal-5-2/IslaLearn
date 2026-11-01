@@ -238,6 +238,7 @@ export type NotificationKind =
   | "application_received"
   | "application_accepted"
   | "application_rejected"
+  | "engagement_cancelled"
   | "session_completed"
   | "review_received"
   | "message_received";

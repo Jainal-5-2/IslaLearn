@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.messages.models import Thread
-from apps.notifications.services import notify
 from apps.sessions.models import Session
 
 from .models import Application, Request
@@ -41,44 +40,21 @@ class RequestListCreateView(generics.ListCreateAPIView):
         elif self.request.method == "GET" and status_filter == "open":
             queryset = queryset.exclude(tutee=self.request.user)
 
-        # ?accepted=true returns accepted-but-not-yet-completed requests
-        # where the user is either the tutee or the accepted tutor. This
-        # is the /sessions Active tab's data source.
-        #
-        # Three conditions must hold for a request to be "active":
-        #
-        # 1. It has an accepted application. Request.status == "closed"
-        #    alone is not enough: RequestCloseView also sets
-        #    status="closed" when the tutee manually closes an open
-        #    request, and that path leaves no accepted application. So
-        #    both the tutee branch and the tutor branch require
-        #    applications__status == "accepted".
-        #
-        # 2. It has no one_on_one Session row. Once the tutee marks the
-        #    request complete, a Session row exists and the request
-        #    belongs only in the Completed tab. Without this exclusion,
-        #    a completed request appears in both Active and Completed.
-        #
-        # 3. The user is a party to it: either the tutee, or the tutor
-        #    whose application was accepted. Non-parties must not see it.
-        #
-        # The tutor and status conditions MUST live in the same Q so
-        # they constrain the same joined Application row; splitting them
-        # into separate .filter() calls creates two independent joins
-        # and lets a rejected application satisfy the tutor condition
-        # while a different accepted application satisfies the status
-        # condition.
         if self.request.query_params.get("accepted") == "true":
-            queryset = queryset.filter(status="closed").filter(
-                models.Q(
-                    tutee=self.request.user,
-                    applications__status="accepted",
+            queryset = (
+                queryset.filter(status="closed")
+                .filter(
+                    models.Q(
+                        tutee=self.request.user,
+                        applications__status="accepted",
+                    )
+                    | models.Q(
+                        applications__tutor=self.request.user,
+                        applications__status="accepted",
+                    )
                 )
-                | models.Q(
-                    applications__tutor=self.request.user,
-                    applications__status="accepted",
-                )
-            ).distinct()
+                .distinct()
+            )
 
             queryset = queryset.annotate(
                 _has_one_on_one_session=Exists(
@@ -108,6 +84,7 @@ class RequestListCreateView(generics.ListCreateAPIView):
         return Response(
             read_serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
+
 
 class RequestDetailView(generics.RetrieveUpdateAPIView):
     queryset = Request.objects.select_related("tutee", "subject").prefetch_related(
@@ -193,8 +170,6 @@ class RequestCloseView(APIView):
             if req.status != "open":
                 raise ValidationError("This request is already closed.")
             if req.applications.filter(status="accepted").exists():
-                # Defensive guard: normally accepting closes the request,
-                # but protect against manual state drift.
                 raise ValidationError(
                     "This request already has an accepted tutor and is closed."
                 )
@@ -203,7 +178,6 @@ class RequestCloseView(APIView):
             req.save(update_fields=["status"])
             req.applications.filter(status="pending").update(status="rejected")
 
-        # Return the full detail shape so the client can re-sync in one call.
         serializer = RequestDetailSerializer(req, context={"request": request})
         return Response(serializer.data)
 
@@ -213,6 +187,8 @@ class RequestApplyView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
+        from apps.notifications.services import notify
+
         request_obj = self.get_request()
 
         if request_obj.tutee == self.request.user:
@@ -256,13 +232,13 @@ class ApplicationDecisionView(generics.UpdateAPIView):
     http_method_names = ["patch"]
 
     def update(self, request, *args, **kwargs):
+        from apps.notifications.services import notify
+
         new_status = request.data.get("status")
         if new_status not in ("accepted", "rejected"):
             raise ValidationError({"status": "Must be 'accepted' or 'rejected'."})
 
         with transaction.atomic():
-            # Lock the application row so two concurrent decisions cannot
-            # both pass the "pending" check.
             try:
                 application = (
                     Application.objects.select_for_update()
@@ -284,8 +260,6 @@ class ApplicationDecisionView(generics.UpdateAPIView):
             application.save(update_fields=["status"])
 
             if new_status == "accepted":
-                # Reject any remaining pending applications and close
-                # the request, all under the same lock.
                 Application.objects.filter(request=req, status="pending").exclude(
                     pk=application.pk
                 ).update(status="rejected")
@@ -305,3 +279,56 @@ class ApplicationDecisionView(generics.UpdateAPIView):
             )
 
         return Response(ApplicationSerializer(application).data)
+
+
+class CancelAcceptedRequestView(APIView):
+    """
+    POST /api/requests/{id}/cancel-accepted/
+
+    The accepted tutor backs out of an engagement. Only valid while
+    the request has an accepted application and no Session row exists.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        from apps.notifications.services import notify
+
+        with transaction.atomic():
+            try:
+                req = (
+                    Request.objects.select_for_update()
+                    .select_related("tutee", "subject")
+                    .prefetch_related("applications__tutor")
+                    .get(pk=pk)
+                )
+            except Request.DoesNotExist:
+                raise NotFound("Request not found.")
+
+            accepted = req.applications.filter(status="accepted").first()
+            if accepted is None:
+                raise ValidationError("This request has no accepted tutor.")
+            if accepted.tutor_id != request.user.id:
+                raise PermissionDenied(
+                    "Only the accepted tutor can cancel this engagement."
+                )
+            if Session.objects.filter(session_type="one_on_one", request=req).exists():
+                raise ValidationError(
+                    "This engagement is already complete and cannot be cancelled."
+                )
+
+            accepted.status = "rejected"
+            accepted.save(update_fields=["status"])
+
+            req.status = "open"
+            req.save(update_fields=["status"])
+
+            notify(
+                kind="engagement_cancelled",
+                actor=request.user,
+                recipients=[req.tutee],
+                target_request=req,
+            )
+
+        serializer = RequestDetailSerializer(req, context={"request": request})
+        return Response(serializer.data)

@@ -74,3 +74,12 @@ export async function decideApplication(
     body: JSON.stringify({ status }),
   });
 }
+
+export async function cancelAcceptedRequest(
+  id: number
+): Promise<TutoringRequest> {
+  return apiFetch<TutoringRequest>(`/requests/${id}/cancel-accepted/`, {
+    method: "POST",
+  });
+}
+

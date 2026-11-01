@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     ApplicationDecisionView,
+    CancelAcceptedRequestView,
     RequestApplyView,
     RequestCloseView,
     RequestDetailView,
@@ -13,5 +14,14 @@ urlpatterns = [
     path("requests/<int:pk>/", RequestDetailView.as_view(), name="request-detail"),
     path("requests/<int:pk>/close/", RequestCloseView.as_view(), name="request-close"),
     path("requests/<int:pk>/apply/", RequestApplyView.as_view(), name="request-apply"),
-    path("applications/<int:pk>/", ApplicationDecisionView.as_view(), name="application-decision"),
+    path(
+        "requests/<int:pk>/cancel-accepted/",
+        CancelAcceptedRequestView.as_view(),
+        name="request-cancel-accepted",
+    ),
+    path(
+        "applications/<int:pk>/",
+        ApplicationDecisionView.as_view(),
+        name="application-decision",
+    ),
 ]

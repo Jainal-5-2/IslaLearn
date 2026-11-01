@@ -423,3 +423,109 @@ class RequestAcceptedFilterTests(APITestCase):
             reverse("request-list"), {"accepted": "true", "status": "closed"}
         )
         self.assertEqual(response.data["count"], 0)
+        
+class CancelAcceptedRequestTests(APITestCase):
+    """
+    POST /api/requests/{id}/cancel-accepted/
+
+    Invariants:
+      - Anonymous -> 401.
+      - Non-party -> 403.
+      - Tutee -> 403 (only the tutor cancels; the tutee's exit is
+        RequestCloseView, before any accept).
+      - The accepted tutor -> 200. Application goes to "rejected",
+        request goes to "open". Other applications stay "rejected".
+      - A second call -> 400 (no accepted application remains).
+      - After a Session exists -> 400.
+      - A request with no accepted tutor -> 400.
+    """
+
+    def setUp(self):
+        self.tutee = User.objects.create_user(
+            username="ctutee", password="pass-ct-1", email="ct@example.com"
+        )
+        self.tutor = User.objects.create_user(
+            username="ctutor", password="pass-cu-1", email="cu@example.com"
+        )
+        self.other_tutor = User.objects.create_user(
+            username="cother", password="pass-co-1", email="co@example.com"
+        )
+        self.outsider = User.objects.create_user(
+            username="cout", password="pass-o-1", email="o@example.com"
+        )
+        self.subject = Subject.objects.create(name="CancelAccepted")
+
+        self.req = Request.objects.create(
+            tutee=self.tutee,
+            subject=self.subject,
+            description="Help",
+            status="open",
+        )
+        self.accepted_app = Application.objects.create(
+            request=self.req, tutor=self.tutor, message="yes", status="accepted"
+        )
+        self.other_app = Application.objects.create(
+            request=self.req,
+            tutor=self.other_tutor,
+            message="also yes",
+            status="rejected",
+        )
+        self.req.status = "closed"
+        self.req.save(update_fields=["status"])
+
+        self.url = reverse(
+            "request-cancel-accepted", args=[self.req.id]
+        )
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_anonymous_rejected(self):
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_outsider_rejected(self):
+        self._login(self.outsider)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_tutee_cannot_cancel(self):
+        self._login(self.tutee)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_accepted_tutor_can_cancel(self):
+        self._login(self.tutor)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.accepted_app.refresh_from_db()
+        self.req.refresh_from_db()
+        self.assertEqual(self.accepted_app.status, "rejected")
+        self.assertEqual(self.req.status, "open")
+
+        # The other application stays rejected. No un-reject.
+        self.other_app.refresh_from_db()
+        self.assertEqual(self.other_app.status, "rejected")
+
+    def test_second_call_rejected(self):
+        self._login(self.tutor)
+        first = self.client.post(self.url)
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+
+        second = self.client.post(self.url)
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_after_session_exists_rejected(self):
+        from apps.sessions.models import Session
+        from django.utils import timezone
+
+        Session.objects.create(
+            session_type="one_on_one",
+            request=self.req,
+            completed_at=timezone.now(),
+            marked_by=self.tutee,
+        )
+        self._login(self.tutor)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

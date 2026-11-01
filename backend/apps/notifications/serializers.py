@@ -70,6 +70,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "application_received",
             "application_accepted",
             "application_rejected",
+            "engagement_cancelled",
         ):
             if obj.target_request is None:
                 return "/dashboard", "a request"

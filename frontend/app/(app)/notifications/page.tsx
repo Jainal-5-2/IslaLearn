@@ -117,6 +117,8 @@ function notificationCopy(n: Notification): string {
       return `accepted your application on ${n.target_label}.`;
     case "application_rejected":
       return `rejected your application on ${n.target_label}.`;
+    case "engagement_cancelled":
+      return `cancelled your engagement on ${n.target_label}.`;
     case "session_completed":
       return `marked ${n.target_label} complete.`;
     case "review_received":

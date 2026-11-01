@@ -85,6 +85,7 @@ export {
   closeRequest,
   applyToRequest,
   decideApplication,
+  cancelAcceptedRequest,
 } from "./requests";
 
 // Broadcasts
