@@ -2,6 +2,8 @@ asgiref==3.12.1
 attrs==26.1.0
 autobahn==26.10.2
 Automat==25.4.16
+boto3==1.43.123
+botocore==1.43.123
 cbor2==6.1.5
 certifi==2026.10.23
 cffi==2.1.1
@@ -14,12 +16,14 @@ daphne==4.2.3
 Django==6.1.2
 django-cors-headers==4.9.0
 django-environ==0.14.0
+django-storages==1.14.6
 djangorestframework==3.18.3
 djangorestframework_simplejwt==5.5.1
 gunicorn==26.2.0
 hyperlink==21.0.0
 idna==3.20
 Incremental==24.11.0
+jmespath==1.1.0
 msgpack==1.2.3
 mysqlclient==2.3.0
 packaging==26.3
@@ -27,9 +31,12 @@ pillow==13.0.0
 pycparser==3.12
 PyJWT==2.15.1
 pyOpenSSL==26.4.0
-redis>=5,<6
+python-dateutil==2.9.0.post0
+redis==5.3.1
 requests==2.34.2
+s3transfer==0.19.3
 service-identity==26.1.0
+six==1.17.0
 sqlparse==0.6.0
 Twisted==26.4.0
 txaio==26.6.1

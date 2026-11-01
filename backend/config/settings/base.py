@@ -236,3 +236,32 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Railway Bucket storage (S3-compatible, private)
+RAILWAY_BUCKET = env("AWS_STORAGE_BUCKET_NAME", default="")
+
+if RAILWAY_BUCKET:
+    AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = RAILWAY_BUCKET
+    AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL")
+    AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="auto")
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = False 
+    AWS_S3_FILE_OVERWRITE = False
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+
+    # The base URL of the small redirect service you will deploy next.
+    # Set this as an environment variable on Railway.
+    MEDIA_REDIRECT_BASE = env("MEDIA_REDIRECT_BASE", default="")
+
+    if MEDIA_REDIRECT_BASE:
+        MEDIA_URL = f"{MEDIA_REDIRECT_BASE}/"
