@@ -66,7 +66,10 @@ Tutors browse open requests and **apply** with a message. The tutee reviews appl
 
 - Not a paid platform (everything is free in v1)
 - Not a video storage service (video pages link/embed existing videos; we don't host)
-- Not an in-app messaging app (Requests use an application thread; Broadcasts use email/notifications)
+- Not an in-app messaging app *for general chat*. There is one
+  per-engagement thread between the tutee and the accepted tutor of a
+  1:1 request (Phase 7), and it is read-only once the session is
+  marked complete. There are no broadcast threads and no group chat.
 - Not a mobile app (web-only for now)
 - Not a general-audience platform (positioned for BaSU CS)
 
@@ -129,6 +132,7 @@ TopicProgress (Phase 2.5)
   - last_page_index (int, monotonic high-water mark)
   - is_completed (bool)
   - last_visited_at, completed_at (nullable)
+  - quiz_results (JSONField, default {}; map of page_id -> {score, total, passed})
   - unique_together = (user, topic)
 
 Request (1:1 demand)
@@ -158,8 +162,29 @@ Review
   - session (FK), reviewer (FK), reviewee (FK)
   - rating (1–5), text
 
+Thread (Phase 7)
+  - request (OneToOne, unique)      ← one thread per accepted request
+  - created_at
+  (open/closed is derived, not stored; see parties.thread_is_open)
+
+Message (Phase 7)
+  - thread (FK), sender (FK)
+  - body (text, max 2000)
+  - created_at
+
 Report
-  - reporter (FK), target_type, target_id, reason
+  - reporter (FK)
+  - target_user | target_topic | target_broadcast | target_request
+    (exactly one, check constraint)
+  - category, reason, created_at
+
+Notification (Phase 8)
+  - recipient (FK User), actor (FK User, nullable)
+  - kind (application_received | application_accepted | application_rejected |
+          engagement_cancelled | session_completed | review_received | message_received)
+  - target_user | target_topic | target_broadcast | target_request | target_review
+    (exactly one, check constraint)
+  - read_at (nullable), created_at
 ```
 
 **Schema hooks for the future** (present from day one, unused in v1):
@@ -191,6 +216,7 @@ Topics
   PATCH  /api/topics/{id}/pages/{page_id}/
   DELETE /api/topics/{id}/pages/{page_id}/
   POST   /api/topics/{id}/progress/   (upsert; body: last_page_index, reset)
+  POST   /api/topics/{id}/quiz/{page_id}/submit/  (body: answers; returns score, total, passed)
 
 Requests (1:1)
   GET    /api/requests/            (browse open requests)
@@ -199,6 +225,7 @@ Requests (1:1)
   POST   /api/requests/{id}/apply/ (tutor applies)
   GET    /api/requests/{id}/applications/
   PATCH  /api/applications/{id}/   (tutee accepts/rejects)
+  POST   /api/requests/{id}/cancel-accepted/ (accepted tutor cancels; reopens the request)
 
 Broadcasts (group)
   GET    /api/broadcasts/          (browse upcoming)
@@ -211,12 +238,23 @@ Broadcasts (group)
                                           backend check is the gate)
 
 Sessions & Reviews
-  POST   /api/sessions/{id}/complete/    (mark complete)
+  POST   /api/requests/{id}/complete/    (tutee marks a 1:1 complete)
+  POST   /api/broadcasts/{id}/complete/  (tutor marks a broadcast complete)
   POST   /api/sessions/{id}/reviews/     (submit review)
   GET    /api/users/{id}/reviews/
 
+Messages (1:1)
+  GET    /api/threads/                   (user's threads)
+  GET    /api/threads/{id}/messages/     (paginated history)
+  POST   /api/threads/{id}/messages/     (create; 400 if thread closed)
+
 Reports
-  POST   /api/reports/
+  POST   /api/reports/                (admin-only read; no public list)
+
+Notifications
+  GET    /api/notifications/             (user's notifications + unread_count)
+  POST   /api/notifications/{id}/read/
+  POST   /api/notifications/read-all/
 ```
 
 ### Next.js Page Map
@@ -228,7 +266,7 @@ Reports
 
 /topics                     → Browse all topics (filter by subject)
 /topics/[id]                → Topic detail (metadata, preview, start/continue button)
-/topics/[id]/read           → Topic reader (pages, quiz, lock gate, resume)
+/topics/[id]/read           → Topic reader (pages, quiz submit + score, lock gate, resume)
 /topics/new                 → Create topic (tutor)
 /topics/[id]/edit           → Edit topic + pages
 
@@ -239,8 +277,20 @@ Reports
 
 /broadcasts                 → Browse upcoming broadcasts
 /broadcasts/new             → Create broadcast (tutor)
-/broadcasts/[id]            → Broadcast detail + join button
+/broadcasts/[id]            → Broadcast detail + join button (or "Completed" notice)
 /broadcasts/[id]/room       → Live video room (participants only)
+
+/sessions                   → Tutoring engagements (Active, Completed, Reviewed tabs)
+/sessions/[id]              → Completed session detail + review form
+
+/messages                   → Thread list
+/messages/[id]              → One thread (WebSocket messages + presence)
+
+/notifications              → Full notification list + mark-all
+
+/settings                   → Profile (bio + avatar), account links, plan display
+/privacy                    → Static privacy policy
+/terms                      → Static terms of service
 
 /dashboard                  → My profile, my topics, my requests, my broadcasts, my sessions
 /profile/[id]               → Public profile + reviews
@@ -289,8 +339,9 @@ data.
   never write progress.
 - Browse `/topics`: "Continue" and "Completed" badges driven by the
   embedded `progress`.
-- Dashboard cards and the "In progress" filter are deferred to Phase 5
-  (polish). The data is available; the UI is not built.
+- Dashboard cards and the "In progress" filter were not built in v1.
+  The data is available on `/api/topics/` (the embedded `progress`
+  object); the UI on `/dashboard` does not show it.
 
 *Decisions locked in:*
 - Completion = reaching the last page (quiz tracking deferred).
@@ -315,10 +366,10 @@ data.
 15. Test the 30-minute meeting cap: see what happens when a meeting hits it and make sure the UI handles it gracefully. Tutees join with camera off by default, since many users have limited bandwidth.
 
 **Phase 5 — Trust & Polish** `[DONE]`
-16. Build `Session` + `Review` + `Report` models and API. `[5a: DONE for Session + Review; Report pending]`
-17. Build session-complete flow + review submission + profile reviews. `[5a: DONE]`
-18. Build report button. `[5b: NOT STARTED]`
-19. Polish UI, add empty states, loading states, error handling. `[5c: NOT STARTED]`
+16. Build `Session` + `Review` + `Report` models and API. `[DONE]`
+17. Build session-complete flow + review submission + profile reviews. `[DONE]`
+18. Build report button. `[DONE]`
+19. Polish UI, add empty states, loading states, error handling. `[DONE]`
 
 **Phase 6 — Session Page** `[DONE]`
 
@@ -352,17 +403,21 @@ data.
 - This makes the "no messaging when closed" rule mechanical: `Request.status == "closed"` plus no session = open; session exists or request reopened = read-only.
 
 **Backend:**
-- `Thread` model: `request` FK (unique), `created_at`, `closed_at` (null while open). One thread per request, enforced by `unique=True` on the FK. Broadcast threads are a v7 addition.
-- `Message` model: `thread` FK, `sender` FK, `body` (text), `created_at`. `ordering = ["created_at"]`.
-- Thread is created **eagerly** at accept time, in the same `select_for_update` transaction as `ApplicationDecisionView`, so the thread exists the moment the engagement does and the Active tab can show a "Message" button without a race.
-- REST endpoints:
-  - `GET /api/threads/` — the user's threads, with `other_party`, `last_message_at`, `unread_count`.
-  - `GET /api/threads/{id}/messages/` — paginated, newest last.
-  - `POST /api/threads/{id}/messages/` — sender must be a party to the thread's request and the thread must be open.
+- `Thread` model: `request` FK (unique), `created_at`. No `closed_at`
+  column: open/closed is derived through
+  `apps.messages.parties.thread_is_open`, which returns false once a
+  Session row exists or the request reopens.
+- `Message` model: `thread` FK, `sender` FK, `body`, `created_at`.
+- Thread is created eagerly at accept time, in the same
+  `select_for_update` transaction as `ApplicationDecisionView`.
+- REST endpoints: `GET /api/threads/`, `GET/POST /api/threads/{id}/messages/`.
+- WebSocket: `/ws/threads/{id}/` (`ThreadConsumer`), joined on connect,
+  rejected with close 4401 without a token and 4403 if not a party.
+  Presence (who is online) lives in a separate Redis hash, not the
+  channel layer. Heartbeat every 10s refreshes the presence entry.
 
 **Frontend:**
 - `/messages` page: thread list on the left, active thread on the right. Opens at `/messages/[threadId]`. Mobile: one column, back to list.
-- Polling every 3s while a thread is open. **WebSocket is the last step of Phase 7, not the first.** Ship with polling, validate the model, then swap the transport in the same phase. Redis and ASGI changes only land at the WebSocket step.
 
 **Notifications for "message received" are Phase 8, not Phase 7.** Phase 7 creates the message; Phase 8 fans out the notification.
 
@@ -375,47 +430,68 @@ data.
 
 **Phase 8 — Notifications**
 
-**Goal:** The bell works. Fan out events from the views that already exist, plus from message creation (Phase 7). In-app only, polled.
+**Goal:** The bell works. Fan out events from the views that already exist, plus from message creation (Phase 7). In-app only, pushed over a per-user WebSocket with a fallback poll.
 
 **Backend:**
-- `Notification` model: `recipient` FK, `actor` FK (nullable for system), `kind` enum (`application_received`, `application_accepted`, `application_rejected`, `session_completed`, `review_received`, `message_received`), `target_type` + `target_id` (or three nullable FKs mirroring `Report`), `read_at` (nullable), `created_at`.
+- `Notification` model: `recipient` FK, `actor` FK (nullable for system), `kind` enum (`application_received`, `application_accepted`, `application_rejected`, `engagement_cancelled`, `session_completed`, `review_received`, `message_received`), four-plus-one nullable target FKs (`target_user`, `target_topic`, `target_broadcast`, `target_request`, `target_review`) with a check constraint requiring exactly one, `read_at` (nullable), `created_at`.
 - Fan-out points, explicit in view bodies (not signals), each inside or after the existing transaction:
   - `RequestApplyView` → `application_received` to tutee.
   - `ApplicationDecisionView` → `application_accepted` / `application_rejected` to tutor.
+  - `CancelAcceptedRequestView` (Phase 10) → `engagement_cancelled` to tutee.
   - `RequestCompleteView` / `BroadcastCompleteView` → `session_completed` to the other parties.
   - `SessionReviewCreateView` → `review_received` to reviewee.
   - `MessageCreateView` (Phase 7) → `message_received` to the other thread party.
+- Every call goes through `apps.notifications.services.notify`, which
+  drops the actor from the recipient list and dedupes by user id, so a
+  view that passes the wrong list still cannot notify the actor.
 - REST endpoints:
   - `GET /api/notifications/` — paginated, newest first, with `unread_count`.
   - `POST /api/notifications/{id}/read/`
   - `POST /api/notifications/read-all/`
 
 **Frontend:**
-- Bell icon in `AppShell` with unread badge, dropdown of the last 10, "View all" link to `/notifications`.
-- `/notifications` page: full list, mark-as-read per row and mark-all.
-- Polling every 30s from `AppShell`. WebSocket push is optional and not required for Phase 8 to be done.
+- Bell in `AppShell` (desktop cluster at lg+, mobile header below lg).
+  Dropdown of the 20 most recent, "Mark all read" inside the dropdown,
+  "View all" link to `/notifications`.
+- `/notifications` page: full list, per-row read, mark-all.
+- Realtime: per-user WebSocket at `/ws/notifications/`
+  (`NotificationConsumer`, `user_<id>` group). The
+  `NotificationProvider` in the `(app)` layout owns one socket per tab,
+  shared by the bell and the `/notifications` page through two React
+  contexts (data and actions). A 60s fallback poll runs while the tab is
+  visible, skipped while hidden.
+- Tab title prefix `(N) ` (for example `(3) IslaLearn`) and a favicon red
+  dot while there are unread rows; both cleared when the count reaches
+  zero or the user logs out.
+- Auto-mark: a notification whose `target_link` matches the current
+  page is marked read as it arrives, without incrementing the badge.
+
+This deviates from the original plan ("polled", "WebSocket optional").
+The deviation is deliberate; see the commit history around Phase 8.
 
 ---
 
 **Phase 9 — Terms, Privacy, and Settings**
 
-**Goal:** Legal pages and, optionally, a minimal Settings page.
+**Goal:** Legal pages and a minimal Settings page.
 
 **Settings — what it contains, honestly:**
 Ship a Settings page only with what the codebase already supports. No placeholders for features that do not exist.
-- **Profile:** `bio`, `profile_picture`. Requires `PATCH /api/users/me/` (does not exist yet; add it in this phase). `UserSerializer` already exposes both fields, so this is a small backend addition plus a form.
+- **Profile:** `bio`, `profile_picture`. Requires `PATCH /api/auth/me/`
+  (shipped as `UserUpdateSerializer` and `MeView`).
 - **Account:** log out (already in sidebar), links to `/privacy` and `/terms`.
 - **Plan:** read-only display of `user.plan`. No upgrade button; v6 has no payments.
 - **Nothing else.** No notification preferences (Phase 8 is all-or-nothing). No password change (add in v7 if users ask). No email preferences. No theme (already global).
 
-**Minimum viable Phase 9:** ship `/privacy` and `/terms` as static pages with real copy, link them from `Footer` (already linked) and from the register page consent line. Add Settings only if the bio/avatar edit is worth the `PATCH /api/users/me/` addition.
+**Minimum viable Phase 9:** ship `/privacy` and `/terms` as static pages with real copy, link them from `Footer` (already linked) and from the register page consent line. Add Settings only if the bio/avatar edit is worth the `PATCH /api/auth/me/` addition.
 
 **Frontend:**
 - `frontend/app/(focused)/privacy/page.tsx` — static content, no backend.
 - `frontend/app/(focused)/terms/page.tsx` — static content, no backend.
 - Footer links confirmed.
 - Register page consent line linking to both.
-- Optional `/settings` page.
+- `/settings` page (shipped): profile (bio + avatar), account links,
+  and read-only plan display.
 
 ---
 
@@ -441,12 +517,18 @@ Ship a Settings page only with what the codebase already supports. No placeholde
   - Tests: join/room-url/cancel on a completed broadcast return 400; complete sets `completed_at` and does not overwrite it on a second call; a completed broadcast appears in `?past=true`; a cancelled broadcast stays hidden from both upcoming and past lists.
   - Out of scope: notifications on completion, archiving, deleting the Whereby room. The room expires on its own.
 
-- **Cancel accepted request.**
-  - Endpoint: `POST /api/requests/{id}/cancel-accepted/`. Either party (tutee or the accepted tutor), only while `Request.status == "closed"` and no `Session` row exists for the request. Returns the updated `Request` in detail shape.
-  - Effect: flip `Request.status` back to `"open"`, set the accepted `Application.status` back to `"pending"` (do not delete it; the tutor applied in good faith and can re-apply or walk away), un-reject the applications that were auto-rejected when the accept happened, and close the Phase 7 thread. The thread closure is derived, so the only write is on `Request` and `Application`; `thread_is_open` returns false once `Request.status == "open"`, which the existing rule already handles. Confirm this is the intended derivation, since `thread_is_open` currently requires `Request.status == "closed"` plus an accepted application; flipping the request to open makes the thread read-only without a separate `closed_at`.
-  - Guard: if a `Session` exists, reject with 400. This is the same rule as the known-limitation note about settlement; a completed engagement cannot be cancelled.
-  - Tests: tutee can cancel; the accepted tutor can cancel; a non-party gets 403; cancelling after a `Session` exists returns 400; cancelling a request that is not closed returns 400; the thread becomes read-only after cancel (assert via `thread_is_open` or the messages POST returning 400).
-  - UI: a "Cancel" action on `/requests/[id]` for both parties when the conditions hold, with a confirm. For the tutor this is the escape hatch when the tutee ghosts, so it should be discoverable from the request detail, not buried.
+- **Cancel accepted request.** `[DONE]`
+  - `POST /api/requests/{id}/cancel-accepted/`, accepted tutor only.
+    Flips the accepted `Application.status` to `rejected` (so
+    `unique_together(request, tutor)` prevents re-applying), and
+    `Request.status` back to `open`. Other applications stay rejected.
+  - Guard: 400 if no accepted application, 400 if a `Session` exists.
+  - The tutee cannot cancel after accepting. Their exit before any
+    accept is the existing `RequestCloseView`. After accept, the
+    tutee is committed until completion or until the tutor cancels.
+  - Fans out an `engagement_cancelled` notification to the tutee.
+  - UI: "Cancel engagement" button on `/requests/[id]` for the
+    accepted tutor only, with a confirm dialog.
 
 - **Anything else found while building Phases 6-9.** Reserve the phase for this; do not pre-close the list.
 
@@ -465,18 +547,79 @@ Ship a Settings page only with what the codebase already supports. No placeholde
 - Mark the request complete, review, verify the Completed tab.
 - Schedule a broadcast, join as a second account, enter the room.
 - Complete the broadcast, verify join/enter are blocked (this is the Phase 10 fix).
-- Cancel a different accepted request and verify the thread goes read-only (this is the Phase 10 cancel flow).
+- Cancel a different accepted request as the **accepted tutor** and verify the thread goes read-only (this is the Phase 10 cancel flow).
 - Send a message on the Phase 7 thread; confirm the other party receives it live, and that a message sent while the receiver was offline appears on reconnect without a refresh.
 
 This catches Phase 10 regressions before step 22.
 
-20. Seed 5-10 Topics manually (act as the first tutor).
+20. Seed 5-10 Topics manually (act as the first tutor). A
+    `seed_topics.py` management command (still to be written) will
+    create a handful of realistic topics with mixed page types.
 
-21. Schedule 2-3 Broadcasts manually to make the platform feel alive. Keep each under 30 minutes on the free plan and track participant-minutes against the 2,000 monthly allowance.
+21. Schedule 2-3 Broadcasts manually to make the platform feel alive. A
+    `seed_broadcasts.py` management command (still to be written) may
+    follow the same pattern. Keep each under 30 minutes on the free plan and track participant-minutes against the 2,000 monthly allowance.
 
 22. Invite 10-20 BaSU CS classmates to test.
 
-23. Review legal copy with a second pair of eyes. (If Phase 9 shipped the pages, this is a review, not a write-from-scratch.)
+23. Review legal copy with a second pair of eyes. The pages shipped in
+    Phase 9; this is a review, not a write-from-scratch.
+
+---
+
+**Phase 12 — Quiz Pass, Progress Gate, and Profile Polish**
+
+**Goal:** Make the quiz page load-bearing and make the profile show what
+a user is actually doing, not just what they have published.
+
+**Backend:**
+- `TopicProgress.quiz_results` is a JSONField mapping `page_id -> {score, total, passed}`.
+  No new model, no attempt history in v1. A retake overwrites the entry.
+- `POST /api/topics/{id}/quiz/{page_id}/submit/` with `{ answers: [int, ...] }`.
+  The view scores against `page.content.questions`, compares to
+  `page.content.passing_score`, writes `quiz_results[page_id]`, and
+  returns `{ score, total, passed }`. Rejects calls from the topic's
+  creator and from unpublished topics, same as `TopicProgressView`.
+- Pass threshold is per-quiz: `page.content.passing_score` (an integer
+  number of correct answers required). It defaults to `len(questions)`
+  when missing, so a quiz page written before this phase still passes
+  only on a perfect score. Do not infer a percentage.
+- Retakes overwrite `quiz_results[page_id]`. There is no append and no
+  `attempt_number`. If a user fails and retakes, the second submit
+  replaces the first result. Attempt history is deferred to v2.
+- `is_completed` requires the last page reached **and** every quiz page
+  passed. `last_page_index` is unchanged; a user can navigate to the last
+  page without passing a quiz, but `is_completed` stays false.
+- `TopicProgressSerializer` exposes `quiz_results` read-only. The reader
+  uses it to branch the Next button and the Finished button.
+
+**Frontend:**
+- `QuizPageRenderer` calls the submit endpoint before showing "Finished".
+  While the quiz is unanswered or unpassed, "Next" is disabled (soft
+  gate). The "Finished" button on a quiz page is only enabled after a
+  pass.
+- A failed quiz page can be retaken from the same page. The existing
+  "Restart Quiz" button resets the local quiz state (question index,
+  selected option, score display) and re-enables "Check Answer". The
+  next "Check Answer" on each question triggers a fresh submit. The new
+  result overwrites the old one in `quiz_results`. There is no retake
+  from the sidebar; the user must be on the quiz page.
+- The reader's "completed" banner and the `/topics` "Completed" badge
+  both derive from `progress.is_completed`, which now means "read to the
+  end and passed every quiz."
+- Profile page adds a "Learning" section: topics this user has progress
+  on, with the same "Continue" / "Completed" badges the browse page uses.
+  Requires a `?progress_for=<user_id>` filter on `/api/topics/` that
+  returns topics where that user has a `TopicProgress` row.
+- Profile page adds `date_joined` from `User`. `PublicUserSerializer`
+  gains one field.
+
+**Not in this phase:**
+- Hard server-side gating of `POST /progress/`. A user can navigate past
+  a quiz without passing it; only `is_completed` is gated.
+- Quiz attempt history. One result per page per user, overwritten on
+  retake.
+- User directory. A `/tutors` browse page was considered and deferred.
 
 ### Explicitly Deferred (v2+)
 
@@ -487,22 +630,33 @@ This catches Phase 10 regressions before step 22.
 - In-call quizzes/polls (`SessionActivity`)
 - Automated matching algorithm
 - Real age/student verification
-- In-app messaging / notifications
+- Broadcast threads / group chat (only 1:1 request threads exist)
+- Email or push notifications (in-app only in v1)
 - Mobile apps
 - Multi-Topic "Course" programs
 - Video hosting (we link/embed, not host)
-- Topic progress: per-page granularity, quiz completion tracking, certificate/achievement badges
+- Topic progress: per-page timestamps, quiz attempt history (v1 stores
+  the latest score per page, not every attempt), certificate/achievement
+  badges
 - Paid requests: an offered_price field on Request and a settlement flow. Settlement is off-platform in any future version that adds it; the platform does not hold funds. Escrow (hold until completion, refund on cancel) requires a payment provider with business registration (PayMongo, Xendit) and is deferred further.
 
 ### Known limitations (v1)
 
 **1:1 completion is tutee-only.** Only the tutee can mark a 1:1 request complete. This protects tutees from a tutor completing a session that never happened, but it leaves two gaps for tutors:
 
-- If the tutee ghosts after accepting, and no session happens, the tutor's protection is `POST /api/requests/{id}/cancel-accepted/` (Phase 10: either party, only while no `Session` exists). That path closes the engagement but does not create a reviewable session.
+- If the tutee ghosts after accepting, and no session happens, the tutor's protection is `POST /api/requests/{id}/cancel-accepted/` (Phase 10, tutor only, while no `Session` exists). That path closes the engagement for the tutor but does not create a reviewable session.
 - If the session happened but the tutee never marks it complete, there is no tutor-side path to close it out in v1. Mitigation is manual (message the tutee, or contact the admin). The planned v2 fix is an inactivity sweep that closes accepted requests with no `Session` and no message activity after N days, carrying a `closed_reason` so the UI can distinguish "expired" from "cancelled."
 
 Tutor-side completion is not planned. The tutee is the customer; the asymmetry is intentional.
 
-**Tutee can avoid completing a session to dodge settlement.** Only the tutee can mark a 1:1 request complete, which is what creates the `Session` row that later settlement would key off. Once a `Session` exists, the request cannot be cancelled by either party (the Phase 10 cancel-accepted endpoint is scoped to "no `Session` exists"), and the thread is read-only. The gap is the window before completion: a tutee who received help can simply never mark the request complete, then cancel the accepted request (Phase 10, either party, while no `Session` exists) to avoid paying.
+**Tutee can avoid completing a session to dodge settlement.** Only the tutee can mark a 1:1 request complete, which is what creates the `Session` row that later settlement would key off. Once a Session exists, the request cannot be cancelled by either party, and the thread is read-only. The remaining gap before completion is that the tutee can simply never mark it complete; the tutor can now back out via `cancel-accepted`, but there is no tutor-side path to close out a session that actually happened. That is the "tutor-side completion" limitation above, not a cancellation gap. Settlement, when it ships, should key off `Session` creation, not `Request.status`.
 
-This is not exploitable in v1 because no money moves. It must be addressed before any paid flow ships. The likely shape is: settlement is triggered by `Session` creation, not by `Request.status`, and the tutor's "mark complete" path (deferred, see above) becomes the dispute resolution when the tutee refuses. Refund logic is out of scope until payments exist.
+This is not exploitable in v1 because no money moves. It must be addressed before any paid flow ships. Refund logic is out of scope until payments exist.
+
+**Quiz gating is soft.** The reader disables "Next" on an unpassed quiz
+page, but the API does not reject a `POST /progress/` that skips a quiz.
+A user who reaches the last page without passing a quiz sees
+`is_completed: false` and cannot mark the topic complete, but
+`last_page_index` still advances. The soft gate is a UI rule; the
+server only enforces completion. If a client bypasses the UI, the
+bypass produces an incomplete topic, not a corrupted one.
