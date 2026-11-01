@@ -11,7 +11,6 @@ import {
   MessageSquare,
   MessageCircle,
   Settings,
-  HelpCircle,
   ChevronsRight,
   X,
 } from "lucide-react";

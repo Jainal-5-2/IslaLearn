@@ -8,7 +8,7 @@ import { Footer } from "@/components/footer";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
-import { UserMenu } from "./user-menu";
+import { UserMenu } from "@/components/user-menu";
 
 interface AppShellProps {
   user: User;
