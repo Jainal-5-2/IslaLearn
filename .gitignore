@@ -53,4 +53,4 @@ backend/media/
 
 digest.txt
 
-**/dump.rdb
+*.rdb
