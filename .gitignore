@@ -52,3 +52,5 @@ backend/media/
 *.pid
 
 digest.txt
+
+**/dump.rdb
