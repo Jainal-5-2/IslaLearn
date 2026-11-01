@@ -106,6 +106,8 @@ class BroadcastDetailSerializer(serializers.ModelSerializer):
             "is_full",
             "is_cancelled",
             "is_tutor",
+            "is_completed",
+            "completed_at",
             "my_participation",
             "can_join",
             "participants",

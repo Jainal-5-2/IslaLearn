@@ -174,8 +174,26 @@ export default function RegisterPage() {
                 className="mt-1 accent-accent"
               />
               <span className="text-muted-foreground">
-                I confirm I am 18 years or older, or I have parental consent to
-                use IslaLearn.
+                I confirm I am 18 years or older, or I have parental consent
+                to use IslaLearn, and I agree to the{" "}
+                <Link
+                  href="/terms"
+                  className="text-accent underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href="/privacy"
+                  className="text-accent underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Privacy Policy
+                </Link>
+                .
               </span>
             </label>
             {ageError && (

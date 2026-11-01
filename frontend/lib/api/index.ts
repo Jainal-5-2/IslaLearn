@@ -50,7 +50,7 @@ export type {
 } from "./types";
 
 // Auth
-export { register, login, getMe, logout } from "./auth";
+export { register, login, getMe, updateMe, logout } from "./auth";
 
 // Users (public)
 export { getUser } from "./users";

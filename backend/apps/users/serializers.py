@@ -53,6 +53,12 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """
+    Read shape. Used everywhere a user appears nested in another
+    response (requests, broadcasts, threads, notifications). Do not add
+    write fields here; edits go through UserUpdateSerializer.
+    """
+
     class Meta:
         model = User
         fields = [
@@ -66,6 +72,22 @@ class UserSerializer(serializers.ModelSerializer):
             "plan",
         ]
         read_only_fields = ["id", "plan"]
+
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """
+    Write shape for PATCH /api/auth/me/.
+
+    Only the two fields a user can self-edit. is_tutor, is_tutee, plan,
+    username, and email are not here, so they cannot be changed through
+    this endpoint even if a client sends them: DRF drops unknown keys,
+    and the model fields are not on the serializer to be validated.
+    Those are deliberate product decisions, not omissions.
+    """
+
+    class Meta:
+        model = User
+        fields = ["bio", "profile_picture"]
 
 
 class PublicUserSerializer(serializers.ModelSerializer):

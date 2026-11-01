@@ -77,11 +77,12 @@ class ThreadListSerializer(serializers.ModelSerializer):
         return obj.request.subject.name
 
     def get_last_message(self, obj):
-        # Uses the prefetched list from the view; falls back to a query
-        # if called outside a prefetched context (e.g. tests).
-        prefetched = getattr(obj, "_prefetched_last_message", None)
-        if prefetched is not None:
-            msg = prefetched
+        # The view builds {thread_id: last_message} in context to avoid
+        # one query per row. Falls back to a query when called outside
+        # the list view (tests, shell).
+        by_thread = self.context.get("last_message_by_thread")
+        if by_thread is not None:
+            msg = by_thread.get(obj.id)
         else:
             msg = obj.messages.select_related("sender").last()
         if msg is None:

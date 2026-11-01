@@ -20,7 +20,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 if (!API_URL) {
   throw new Error(
     "NEXT_PUBLIC_API_URL is not set. Copy .env.example to .env.local " +
-      "and fill it in, or pass it to `next dev` and `next build`."
+    "and fill it in, or pass it to `next dev` and `next build`."
   );
 }
 
@@ -99,8 +99,14 @@ export async function apiFetch<T>(
   options: RequestInit = {},
   isRetry = false
 ): Promise<T> {
+  // FormData sets its own Content-Type (multipart/form-data with a
+  // boundary the browser generates). Overriding it breaks the upload
+  // silently: the file field parses as empty.
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(options.headers as Record<string, string>),
   };
 

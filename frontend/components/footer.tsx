@@ -7,7 +7,7 @@ interface FooterProps {
 
 export function Footer({ isLoggedIn = false }: FooterProps) {
   // Server Component: this evaluates per-request, not at build time.
-  const currentYear = new Date().getFullYear();
+  const currentYear = "2026";
 
   return (
     <footer className="border-t border-border bg-card">
@@ -84,7 +84,7 @@ export function Footer({ isLoggedIn = false }: FooterProps) {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/dashboard" className="hover:text-foreground transition-colors">
+                  <Link href="/settings" className="hover:text-foreground transition-colors">
                     Settings
                   </Link>
                 </li>

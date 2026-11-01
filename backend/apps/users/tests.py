@@ -1,9 +1,18 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 User = get_user_model()
+
+# 1x1 transparent GIF. The smallest valid image fixture, so the test
+# does not depend on a file on disk.
+_TINY_GIF = (
+    b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!"
+    b"\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01"
+    b"\x00\x00\x02\x02D\x01\x00;"
+)
 
 
 class RegisterSerializerTests(APITestCase):
@@ -71,3 +80,92 @@ class RegisterSerializerTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("detail", response.data)
         self.assertNotIn("username", response.data)
+
+
+class MeUpdateTests(APITestCase):
+    """
+    Covers GET and PATCH /api/auth/me/.
+
+    Invariants:
+      - Anonymous GET and PATCH are 401.
+      - GET returns the full read shape (unchanged behavior).
+      - PATCH updates bio and returns the read shape.
+      - PATCH updates profile_picture via multipart and returns the URL.
+      - PATCH ignores is_tutor, is_tutee, plan, and email: those fields
+        are not on the write serializer, so they cannot be self-edited.
+      - PUT is not allowed (405).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="meuser",
+            password="pass-me-1",
+            email="me@example.com",
+            bio="old bio",
+        )
+        self.url = reverse("me")
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_anonymous_get_rejected(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_anonymous_patch_rejected(self):
+        response = self.client.patch(self.url, {"bio": "x"})
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_get_returns_read_shape(self):
+        self._login(self.user)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.user.id)
+        self.assertEqual(response.data["bio"], "old bio")
+        self.assertIn("plan", response.data)
+
+    def test_patch_updates_bio_and_returns_read_shape(self):
+        self._login(self.user)
+        response = self.client.patch(self.url, {"bio": "new bio"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["bio"], "new bio")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.bio, "new bio")
+
+    def test_patch_uploads_profile_picture(self):
+        self._login(self.user)
+        upload = SimpleUploadedFile(
+            "avatar.gif", _TINY_GIF, content_type="image/gif"
+        )
+        response = self.client.patch(
+            self.url, {"profile_picture": upload}, format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(response.data["profile_picture"])
+        self.user.refresh_from_db()
+        self.assertTrue(bool(self.user.profile_picture))
+
+    def test_patch_cannot_change_privileged_fields(self):
+        self._login(self.user)
+        response = self.client.patch(
+            self.url,
+            {
+                "is_tutor": True,
+                "is_tutee": False,
+                "plan": "paid",
+                "email": "hijack@example.com",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_tutor)
+        self.assertTrue(self.user.is_tutee)
+        self.assertEqual(self.user.plan, "free")
+        self.assertEqual(self.user.email, "me@example.com")
+
+    def test_put_not_allowed(self):
+        self._login(self.user)
+        response = self.client.put(self.url, {"bio": "x"})
+        self.assertEqual(
+            response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED
+        )

@@ -42,6 +42,6 @@ export function getNotificationSocketUrl(): string | null {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   const token = getAccessToken();
   if (!apiUrl || !token) return null;
-  const base = apiUrl.replace(/^http/, "ws").replace(/\/api$/, "");
+  const base = apiUrl.replace(/^http/, "ws").replace(/\/api\/?$/, "");
   return `${base}/ws/notifications/?token=${encodeURIComponent(token)}`;
 }

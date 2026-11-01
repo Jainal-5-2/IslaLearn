@@ -22,6 +22,11 @@ Redis failures are non-fatal for the caller: presence is a nicety, and
 a Redis hiccup should not close a working socket. mark_online and
 mark_offline swallow errors; current_online returns an empty list on
 error. The WebSocket message path does not depend on this module.
+
+Dev without Redis: dev.py swaps in the in-memory channel layer, which
+has no CONFIG["hosts"]. _client() returns None in that case and every
+public function returns early. That is why this does not crash a
+fresh clone that never started Docker.
 """
 
 import logging
@@ -40,7 +45,17 @@ STALE_AFTER_SECONDS = 25
 
 
 def _client():
-    url = settings.CHANNEL_LAYERS["default"]["CONFIG"]["hosts"][0]
+    """
+    Return a Redis client, or None when the configured channel layer is
+    not Redis-backed (the in-memory layer used in dev without Docker).
+    Returning None instead of raising is what keeps the consumer alive.
+    """
+    layer = settings.CHANNEL_LAYERS.get("default", {})
+    config = layer.get("CONFIG") or {}
+    hosts = config.get("hosts")
+    if not hosts:
+        return None
+    url = hosts[0]
     if isinstance(url, (list, tuple)):
         url = url[0]
     return redis.Redis.from_url(url)
@@ -55,8 +70,10 @@ def _now_iso():
 
 
 def mark_online(thread_id, user_id):
+    r = _client()
+    if r is None:
+        return
     try:
-        r = _client()
         key = _key(thread_id)
         r.hset(key, str(user_id), _now_iso())
         r.expire(key, HEARTBEAT_TTL_SECONDS)
@@ -65,8 +82,10 @@ def mark_online(thread_id, user_id):
 
 
 def mark_offline(thread_id, user_id):
+    r = _client()
+    if r is None:
+        return
     try:
-        r = _client()
         key = _key(thread_id)
         r.hdel(key, str(user_id))
         if r.hlen(key) == 0:
@@ -80,8 +99,10 @@ def current_online(thread_id):
     Return the list of user ids in the thread whose last heartbeat is
     within STALE_AFTER_SECONDS. Sorted for deterministic test output.
     """
+    r = _client()
+    if r is None:
+        return []
     try:
-        r = _client()
         raw = r.hgetall(_key(thread_id))
     except redis.RedisError:
         logger.exception("presence: current_online failed")

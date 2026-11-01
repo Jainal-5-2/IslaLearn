@@ -155,13 +155,7 @@ export function DashboardSidebar({
               <SidebarItem
                 Icon={Settings}
                 title="Settings"
-                isSelected={false}
-                onClick={onMobileClose}
-                open={true}
-              />
-              <SidebarItem
-                Icon={HelpCircle}
-                title="Help"
+                href="/settings"
                 isSelected={false}
                 onClick={onMobileClose}
                 open={true}
@@ -261,7 +255,7 @@ function ActiveNavItemsFallback({ open }: { open: boolean }) {
           title={item.title}
           href={item.href}
           isSelected={false}
-          onClick={() => {}}
+          onClick={() => { }}
           open={open}
         />
       ))}
