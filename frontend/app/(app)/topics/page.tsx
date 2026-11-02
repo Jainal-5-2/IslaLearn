@@ -7,11 +7,14 @@ import { Plus, PlayCircle, CheckCircle2 } from "lucide-react";
 import {
   getSubjects,
   getTopics,
+  getMe,
   Subject,
   Topic,
+  User,
 } from "@/lib/api";
 import { SubjectCombobox } from "@/components/subject-combobox";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { cn } from "@/lib/utils";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -23,25 +26,40 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
 };
 
+type Tab = "browse" | "mine";
+
 export default function TopicsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [user, setUser] = useState<User | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<number | null>(null);
+  const [tab, setTab] = useState<Tab>("browse");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    getSubjects()
-      .then(setSubjects)
+    Promise.all([getSubjects(), getMe()])
+      .then(([subjectsData, userData]) => {
+        setSubjects(subjectsData);
+        setUser(userData);
+      })
       .catch((err) =>
-        setError(err instanceof Error ? err.message : "Failed to load subjects")
+        setError(err instanceof Error ? err.message : "Failed to load")
       );
   }, []);
 
   useEffect(() => {
+    // Do not fire the topics fetch until we know who the user is. The
+    // "mine" tab needs user.id and the "browse" tab would just waste a
+    // request that gets replaced a tick later.
+    if (!user) return;
+
     let cancelled = false;
     setLoading(true);
-    getTopics({ subject: selectedSubject ?? undefined })
+    getTopics({
+      subject: selectedSubject ?? undefined,
+      createdBy: tab === "mine" ? user.id : undefined,
+    })
       .then((data) => {
         if (!cancelled) setTopics(data.results);
       })
@@ -56,7 +74,7 @@ export default function TopicsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedSubject]);
+  }, [selectedSubject, tab, user]);
 
   const selectedSubjectName =
     selectedSubject !== null
@@ -64,8 +82,8 @@ export default function TopicsPage() {
       : null;
 
   return (
-    // Fixed to the viewport: header and filter pinned, only the grid
-    // scrolls. 4rem is the (app) layout's mobile header; 3rem is
+    // Fixed to the viewport: header, tabs, and filter pinned; only the
+    // grid scrolls. 4rem is the (app) layout's mobile header; 3rem is
     // main's vertical padding on lg+.
     <div className="flex flex-col h-[calc(100dvh-4rem)] lg:h-[calc(100dvh-3rem)]">
       {/* Header */}
@@ -83,6 +101,24 @@ export default function TopicsPage() {
           <Plus className="h-4 w-4" />
           Create Topic
         </Link>
+      </div>
+
+      {/* Tabs */}
+      <div className="shrink-0 flex gap-1 p-1 bg-muted rounded-lg w-full sm:w-fit mb-4">
+        {(["browse", "mine"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-medium transition-colors",
+              tab === t
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {t === "browse" ? "Browse" : "My topics"}
+          </button>
+        ))}
       </div>
 
       {/* Filter row */}
@@ -120,19 +156,32 @@ export default function TopicsPage() {
           // instead of hugging the top of the scroll region.
           <div className="h-full flex flex-col items-center justify-center text-center px-4 py-12 bg-card border border-dashed border-border rounded-xl">
             <h3 className="text-base sm:text-lg font-semibold mb-2">
-              No topics found
+              {tab === "mine" ? "You haven't created any topics" : "No topics found"}
             </h3>
             <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md">
-              {selectedSubject
-                ? "No topics in this subject yet. Be the first to create one!"
-                : "The community hasn't published any topics yet."}
+              {tab === "mine"
+                ? selectedSubject
+                  ? "No topics in this subject yet. Create one to get started."
+                  : "Create your first topic and publish it for your peers."
+                : selectedSubject
+                  ? "No topics in this subject yet. Be the first to create one!"
+                  : "The community hasn't published any topics yet."}
             </p>
-            <Link
-              href="/topics/new"
-              className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
-            >
-              Create the first topic
-            </Link>
+            {tab === "mine" ? (
+              <Link
+                href="/topics/new"
+                className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+              >
+                Create a topic
+              </Link>
+            ) : (
+              <Link
+                href="/topics/new"
+                className="inline-flex items-center justify-center h-10 px-4 rounded-md bg-accent text-accent-foreground font-medium hover:bg-accent/90 transition-colors"
+              >
+                Create the first topic
+              </Link>
+            )}
           </div>
         ) : (
           <motion.div
@@ -159,6 +208,13 @@ export default function TopicsPage() {
                       <span className="text-xs text-muted-foreground">
                         {topic.page_count} pages
                       </span>
+                      {/*
+                        progress is null for the topic creator (backend
+                        short-circuits in _getProgress), so these badges
+                        never render on the "My topics" tab. No frontend
+                        branch is needed; keep the conditionals as they
+                        are so a reader sees why.
+                      */}
                       {isInProgress && (
                         <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
                           <PlayCircle className="h-3 w-3" />
