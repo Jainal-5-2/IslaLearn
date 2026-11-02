@@ -3,7 +3,16 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { Star, BookOpen, Video, MessageSquare } from "lucide-react";
+import {
+  Star,
+  BookOpen,
+  Video,
+  MessageSquare,
+  PlayCircle,
+  CheckCircle2,
+  CalendarDays,
+  TrendingUp,
+} from "lucide-react";
 import {
   getMe,
   getUser,
@@ -38,6 +47,7 @@ function ProfilePage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [learningTopics, setLearningTopics] = useState<Topic[]>([]);
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,15 +59,22 @@ function ProfilePage() {
       getUser(userId),
       getUserReviews(userId),
       getTopics({ createdBy: userId }),
+      getTopics({ progressFor: userId }).catch(() => ({
+        count: 0,
+        next: null,
+        previous: null,
+        results: [] as Topic[],
+      })),
       getBroadcasts({ tutor: userId, past: true }),
     ])
-      .then(([me, u, reviewData, topicsData, broadcastsData]) => {
+      .then(([me, u, reviewData, topicsData, learningData, broadcastsData]) => {
         if (cancelled) return;
         setCurrentUser(me);
         setUser(u);
         setReviews(reviewData.reviews);
         setAverageRating(reviewData.average_rating);
         setTopics(topicsData.results);
+        setLearningTopics(learningData.results);
         setBroadcasts(broadcastsData.results);
       })
       .catch((e) => {
@@ -94,17 +111,47 @@ function ProfilePage() {
   const isSelf = currentUser?.id === userId;
   const displayName = user.username;
 
+  // The Learning section is meaningful on someone else's profile only
+  // when they actually have topics in progress. On your own profile,
+  // show the empty state too so you can see there is nothing to resume.
+  const showLearning = learningTopics.length > 0 || isSelf;
+
+  const memberSince = (() => {
+    if (!user.date_joined) return null;
+    const d = new Date(user.date_joined);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+    });
+  })();
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="flex items-start gap-4">
-          <div className="h-16 w-16 rounded-full bg-accent/20 flex items-center justify-center text-2xl font-bold text-accent shrink-0">
-            {displayName[0]?.toUpperCase()}
+          <div className="h-16 w-16 rounded-full bg-accent/20 flex items-center justify-center text-2xl font-bold text-accent shrink-0 overflow-hidden">
+            {user.profile_picture ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.profile_picture}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              displayName[0]?.toUpperCase()
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold truncate">{displayName}</h1>
+            {memberSince && (
+              <p className="text-xs text-muted-foreground mt-1 inline-flex items-center gap-1">
+                <CalendarDays className="h-3.5 w-3.5" />
+                Member since {memberSince}
+              </p>
+            )}
             {isSelf && (
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-2">
                 This is your profile.
               </p>
             )}
@@ -134,6 +181,61 @@ function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {showLearning && (
+        <div className="bg-card border border-border rounded-xl p-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Learning
+          </h2>
+          {learningTopics.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {isSelf
+                ? "You haven't started any topics yet. Browse the topic list to find something to learn."
+                : "No topics in progress."}
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {learningTopics.map((t) => {
+                const progress = t.progress;
+                const isCompleted = !!progress?.is_completed;
+                const isInProgress = !!progress && !isCompleted;
+                return (
+                  <li key={t.id}>
+                    <Link
+                      href={`/topics/${t.id}`}
+                      className="flex items-center justify-between gap-2 p-3 rounded-md bg-background border border-border hover:border-accent/40 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {t.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {t.subject.name} · {t.page_count} pages
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isInProgress && (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-accent/10 text-accent rounded-md">
+                            <PlayCircle className="h-3 w-3" />
+                            Continue
+                          </span>
+                        )}
+                        {isCompleted && (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500/10 text-green-600 rounded-md">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Completed
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="bg-card border border-border rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
