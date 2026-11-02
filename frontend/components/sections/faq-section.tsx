@@ -6,6 +6,8 @@ type QA = {
   answer: string;
 };
 
+const CONTACT_EMAIL = "asbijay@gmail.com";
+
 const FAQ: QA[] = [
   {
     question: "Do I have to be a CS student?",
@@ -52,10 +54,10 @@ export function FaqSection() {
             Quick answers to the questions we get the most. Can&apos;t find
             yours? Write to{" "}
             <a
-              href="mailto:hello@islalearn.com"
+              href={`mailto:${CONTACT_EMAIL}`}
               className="font-medium text-foreground underline-offset-4 hover:underline"
             >
-              hello@islalearn.com
+              {CONTACT_EMAIL}
             </a>
             .
           </p>
@@ -94,7 +96,7 @@ export function FaqSection() {
             </div>
           </div>
           <Link
-            href="mailto:hello@islalearn.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="inline-flex w-full items-center justify-center gap-2 h-10 px-5 rounded-full bg-accent text-accent-foreground text-sm font-medium hover:bg-accent/90 transition-colors sm:w-auto"
           >
             Ask us anything

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 
+const CONTACT_EMAIL = "asbijay@gmail.com";
+
 interface FooterProps {
   isLoggedIn?: boolean;
 }
@@ -59,7 +61,7 @@ export function Footer({ isLoggedIn = false }: FooterProps) {
               </li>
               <li>
                 <a
-                  href="mailto:hello@islalearn.com"
+                  href={`mailto:${CONTACT_EMAIL}`}
                   className="hover:text-foreground transition-colors"
                 >
                   Contact

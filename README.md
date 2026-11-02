@@ -685,3 +685,14 @@ A user who reaches the last page without passing a quiz sees
 `last_page_index` still advances. The soft gate is a UI rule; the
 server only enforces completion. If a client bypasses the UI, the
 bypass produces an incomplete topic, not a corrupted one.
+
+### Testing
+
+A manual QA checklist covering auth, topics and quizzes, requests, messages, sessions and reviews, broadcasts, notifications, reports, settings, and backend checks lives in [`TESTING.md`](TESTING.md).
+
+Backend tests:
+
+```
+python manage.py test apps.topics apps.users apps.requests apps.broadcasts apps.sessions apps.messages apps.notifications apps.reports
+python manage.py makemigrations --check --dry-run
+```
