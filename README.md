@@ -207,7 +207,7 @@ Subjects
   GET    /api/subjects/
 
 Topics
-  GET    /api/topics/              (browse, filter by subject)
+  GET    /api/topics/              (browse, filter by subject, ?progress_for=<user_id>)
   POST   /api/topics/              (create — tutor)
   GET    /api/topics/{id}/         (detail, with page lock flags)
   PATCH  /api/topics/{id}/         (edit — owner only)
@@ -216,7 +216,7 @@ Topics
   PATCH  /api/topics/{id}/pages/{page_id}/
   DELETE /api/topics/{id}/pages/{page_id}/
   POST   /api/topics/{id}/progress/   (upsert; body: last_page_index, reset)
-  POST   /api/topics/{id}/quiz/{page_id}/submit/  (body: answers; returns score, total, passed)
+  POST   /api/topics/{id}/quiz/{page_id}/submit/  (body: answers; returns score, total, passed, passing_score)
 
 Requests (1:1)
   GET    /api/requests/            (browse open requests)
@@ -567,7 +567,7 @@ This catches Phase 10 regressions before step 22.
 
 ---
 
-**Phase 12 — Quiz Pass, Progress Gate, and Profile Polish**
+**Phase 12 — Quiz Pass, Progress Gate, and Profile Polish** `[DONE]`
 
 **Goal:** Make the quiz page load-bearing and make the profile show what
 a user is actually doing, not just what they have published.
@@ -575,11 +575,15 @@ a user is actually doing, not just what they have published.
 **Backend:**
 - `TopicProgress.quiz_results` is a JSONField mapping `page_id -> {score, total, passed}`.
   No new model, no attempt history in v1. A retake overwrites the entry.
+  Keys are strings, as JSON requires; the frontend mirrors that shape.
 - `POST /api/topics/{id}/quiz/{page_id}/submit/` with `{ answers: [int, ...] }`.
   The view scores against `page.content.questions`, compares to
-  `page.content.passing_score`, writes `quiz_results[page_id]`, and
-  returns `{ score, total, passed }`. Rejects calls from the topic's
-  creator and from unpublished topics, same as `TopicProgressView`.
+  `page.content.passing_score`, writes `quiz_results[str(page_id)]`, and
+  returns `{ score, total, passed, passing_score }`. Rejects calls from
+  the topic's creator and from unpublished topics, same as
+  `TopicProgressView`. Also rejects non-quiz pages, quizzes with no
+  questions, and answers whose length does not match the question
+  count.
 - Pass threshold is per-quiz: `page.content.passing_score` (an integer
   number of correct answers required). It defaults to `len(questions)`
   when missing, so a quiz page written before this phase still passes
@@ -592,27 +596,48 @@ a user is actually doing, not just what they have published.
   page without passing a quiz, but `is_completed` stays false.
 - `TopicProgressSerializer` exposes `quiz_results` read-only. The reader
   uses it to branch the Next button and the Finished button.
+- `GET /api/topics/?progress_for=<user_id>` returns topics where that
+  user has a `TopicProgress` row. Backs the profile "Learning" section.
+- `PublicUserSerializer` gained `date_joined`.
 
 **Frontend:**
-- `QuizPageRenderer` calls the submit endpoint before showing "Finished".
-  While the quiz is unanswered or unpassed, "Next" is disabled (soft
-  gate). The "Finished" button on a quiz page is only enabled after a
-  pass.
-- A failed quiz page can be retaken from the same page. The existing
-  "Restart Quiz" button resets the local quiz state (question index,
-  selected option, score display) and re-enables "Check Answer". The
-  next "Check Answer" on each question triggers a fresh submit. The new
-  result overwrites the old one in `quiz_results`. There is no retake
+- `QuizPageRenderer` (extracted to
+  `frontend/components/quiz-page-renderer.tsx`) calls the submit endpoint
+  before enabling "Next" or "Finished". While the quiz is unanswered or
+  unpassed, "Next" is disabled (soft gate). The "Finished" button on a
+  quiz page is only enabled after a pass. It reads
+  `page.content.passing_score` and shows it in the answer header ("N
+  required to pass") and in the review panel ("You needed N to pass").
+- A failed quiz page can be retaken from the same page. The "Retake quiz"
+  / "Try again" button resets the local quiz state (selections, score
+  display, review view) and re-enables the answer form. The next submit
+  overwrites `quiz_results[str(page_id)]` server-side. There is no retake
   from the sidebar; the user must be on the quiz page.
 - The reader's "completed" banner and the `/topics` "Completed" badge
   both derive from `progress.is_completed`, which now means "read to the
-  end and passed every quiz."
+  end and passed every quiz." A sidebar entry for an unpassed quiz
+  shows a small "Retry" label.
+- `PageEditor` gained a "Passing threshold" input in the quiz branch. It
+  is an integer count, clamped to `1..questions.length`, seeded from
+  `page.content.passing_score` on existing pages and from
+  `questions.length` on new ones. Adding or removing a question keeps
+  the threshold in range; a threshold equal to the old question count
+  follows the new count (stays "all").
 - Profile page adds a "Learning" section: topics this user has progress
   on, with the same "Continue" / "Completed" badges the browse page uses.
-  Requires a `?progress_for=<user_id>` filter on `/api/topics/` that
-  returns topics where that user has a `TopicProgress` row.
-- Profile page adds `date_joined` from `User`. `PublicUserSerializer`
-  gains one field.
+  The section is shown on your own profile even when empty (as a
+  browse-topics nudge), and on another user's profile only when they
+  have at least one topic in progress.
+- Profile page shows `date_joined` as "Member since <Month Year>" under
+  the username.
+
+**Reader refactor:**
+- `LockGate` and `ResetProgressDialog` moved to
+  `frontend/components/reader-modals.tsx`.
+- `QuizPageRenderer` moved to
+  `frontend/components/quiz-page-renderer.tsx`.
+- `TextPageRenderer` and `VideoPageRenderer` stay in `read/page.tsx`.
+  They are tiny and reader-tied.
 
 **Not in this phase:**
 - Hard server-side gating of `POST /progress/`. A user can navigate past
