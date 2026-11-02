@@ -7,6 +7,12 @@ import { HeroSection } from "@/components/hero-section";
 import { Logo } from "@/components/logo";
 import { Footer } from "@/components/footer";
 import { FullPageLoader } from "@/components/full-page-loader";
+import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  HowItWorksSection,
+  BuiltForSection,
+  FaqSection,
+} from "@/components/sections";
 import { getAccessToken } from "@/lib/api";
 
 export default function HomePage() {
@@ -31,7 +37,8 @@ export default function HomePage() {
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Logo size={36} />
-          <nav className="flex items-center gap-2 sm:gap-4">
+          <nav className="flex items-center gap-2 sm:gap-3">
+            <ThemeToggle />
             <Link
               href="/login"
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-3 py-2"
@@ -86,6 +93,8 @@ export default function HomePage() {
         ]}
       />
 
+      <HowItWorksSection />
+
       <section className="py-20 sm:py-24 px-4 sm:px-6 max-w-6xl mx-auto w-full border-t border-border">
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
@@ -115,6 +124,8 @@ export default function HomePage() {
         </div>
       </section>
 
+      <BuiltForSection />
+
       <section className="py-20 sm:py-24 px-4 sm:px-6 max-w-4xl mx-auto w-full text-center">
         <div className="bg-card border border-border rounded-3xl p-8 sm:p-12 md:p-16">
           <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-4">
@@ -131,6 +142,8 @@ export default function HomePage() {
           </button>
         </div>
       </section>
+
+      <FaqSection />
 
       <Footer />
     </main>
