@@ -82,9 +82,9 @@ export default function HomePage() {
           { value: "Live", label: "sessions", icon: <VideoIcon /> },
         ]}
         images={[
-          "/root/hero-1.jpeg",
-          "/root/hero-2.jpeg",
-          "https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=600&fit=crop",
+          "/hero-1.jpeg",
+          "/hero-explain.jpg",
+          "/hero-group.jpg",
         ]}
         imageAlts={[
           "Students collaborating on a laptop",
