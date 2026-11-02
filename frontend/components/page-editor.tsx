@@ -50,11 +50,33 @@ export function PageEditor({
       { question: "", options: ["", "", "", ""], correct_index: 0 },
     ]
   );
+  // Number of correct answers required to pass. Backend defaults to
+  // len(questions) when missing; the editor seeds to the stored value
+  // or to the question count for new quizzes. It is a count, not a
+  // percentage.
+  const [passingScore, setPassingScore] = useState<number>(() => {
+    const stored = page?.content?.passing_score;
+    if (typeof stored === "number" && stored > 0) return stored;
+    const seedQuestions = (page?.content?.questions as QuizQuestion[]) || [
+      { question: "", options: ["", "", "", ""], correct_index: 0 },
+    ];
+    return seedQuestions.length;
+  });
+
+  function clampPassingScore(n: number, questionCount: number): number {
+    if (!Number.isFinite(n)) return Math.max(1, questionCount);
+    const floor = 1;
+    const ceil = Math.max(1, questionCount);
+    return Math.min(Math.max(Math.floor(n), floor), ceil);
+  }
 
   function buildContent(): Record<string, unknown> {
     if (pageType === "text") return { body: textBody };
     if (pageType === "video") return { url: videoUrl };
-    return { questions };
+    return {
+      questions,
+      passing_score: clampPassingScore(passingScore, questions.length),
+    };
   }
 
   async function handleSave() {
@@ -108,15 +130,31 @@ export function PageEditor({
   }
 
   function addQuestion() {
-    setQuestions((prev) => [
-      ...prev,
-      { question: "", options: ["", "", "", ""], correct_index: 0 },
-    ]);
+    setQuestions((prev) => {
+      const next = [
+        ...prev,
+        { question: "", options: ["", "", "", ""], correct_index: 0 },
+      ];
+      // Keep the threshold in range. Existing passingScore is preserved
+      // unless it was equal to the previous length (i.e. "all"), in
+      // which case it follows the new length.
+      setPassingScore((current) => {
+        if (current >= prev.length) return next.length;
+        return clampPassingScore(current, next.length);
+      });
+      return next;
+    });
   }
 
   function removeQuestion(index: number) {
-    setQuestions((prev) => prev.filter((_, i) => i !== index));
+    setQuestions((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      setPassingScore((current) => clampPassingScore(current, next.length));
+      return next;
+    });
   }
+
+  const passingCeiling = Math.max(1, questions.length);
 
   return (
     <div className="bg-card border border-border rounded-xl p-6 space-y-6">
@@ -262,6 +300,35 @@ export function PageEditor({
             <Plus className="h-4 w-4" />
             Add question
           </button>
+
+          <div className="border-t border-border pt-4">
+            <label className="block text-sm font-medium mb-1.5">
+              Passing threshold
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={passingCeiling}
+                value={passingScore}
+                onChange={(e) =>
+                  setPassingScore(
+                    clampPassingScore(Number(e.target.value), passingCeiling)
+                  )
+                }
+                className="w-24 border border-border bg-background text-foreground rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+              <span className="text-sm text-muted-foreground">
+                of {passingCeiling} question{passingCeiling === 1 ? "" : "s"}{" "}
+                required to pass
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              A user must answer this many questions correctly to pass the
+              quiz. Defaults to all questions when left at{" "}
+              {passingCeiling}.
+            </p>
+          </div>
         </div>
       )}
 
