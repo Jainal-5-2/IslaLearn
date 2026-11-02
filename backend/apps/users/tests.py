@@ -169,3 +169,30 @@ class MeUpdateTests(APITestCase):
         self.assertEqual(
             response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+
+class PublicUserSerializerTests(APITestCase):
+    """
+    Covers GET /api/users/{id}/ (Phase 12 addition).
+
+    Invariants:
+      - date_joined is present and non-null.
+      - email is not exposed.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="pubuser", password="pass-pu-1", email="pu@example.com"
+        )
+        self.url = reverse("user-detail", args=[self.user.id])
+
+    def test_returns_date_joined(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("date_joined", response.data)
+        self.assertIsNotNone(response.data["date_joined"])
+
+    def test_email_not_exposed(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("email", response.data)

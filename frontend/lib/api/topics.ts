@@ -5,10 +5,12 @@ import type { Topic, TopicProgress } from "./types";
 export async function getTopics(params?: {
   subject?: number;
   createdBy?: number;
+  progressFor?: number;
 }): Promise<Paginated<Topic>> {
   const search = new URLSearchParams();
   if (params?.subject) search.set("subject", String(params.subject));
   if (params?.createdBy) search.set("created_by", String(params.createdBy));
+  if (params?.progressFor) search.set("progress_for", String(params.progressFor));
   const qs = search.toString();
   const data = await apiFetch<Paginated<Topic> | Topic[]>(
     `/topics/${qs ? `?${qs}` : ""}`
@@ -70,5 +72,31 @@ export async function recordProgress(
 export async function unlockTopic(topicId: number): Promise<TopicProgress> {
   return apiFetch<TopicProgress>(`/topics/${topicId}/unlock/`, {
     method: "POST",
+  });
+}
+
+/**
+ * POST /api/topics/{id}/quiz/{pageId}/submit/
+ *
+ * Server-side scoring. `answers` is an array of selected option indices,
+ * one per question, in the same order as the page's questions. A retake
+ * overwrites the stored result; no attempt history.
+ *
+ * The response includes `passing_score` (not part of the stored entry)
+ * so the UI can explain a failure ("you needed 2 of 3").
+ */
+export async function submitQuiz(
+  topicId: number,
+  pageId: number,
+  answers: number[]
+): Promise<{
+  score: number;
+  total: number;
+  passed: boolean;
+  passing_score: number;
+}> {
+  return apiFetch(`/topics/${topicId}/quiz/${pageId}/submit/`, {
+    method: "POST",
+    body: JSON.stringify({ answers }),
   });
 }

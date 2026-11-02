@@ -18,10 +18,22 @@ export type Subject = {
 };
 
 // ---------- Topic Progress ----------
+/**
+ * quiz_results is keyed by str(page_id) to match the backend JSONField.
+ * One entry per quiz page per user; a retake overwrites. Missing means
+ * "not attempted" (or attempted before Phase 12, which has no record).
+ */
+export type QuizResult = {
+  score: number;
+  total: number;
+  passed: boolean;
+};
+
 export type TopicProgress = {
   last_page_index: number;
   is_unlocked: boolean;
   is_completed: boolean;
+  quiz_results: Record<string, QuizResult>;
   last_visited_at: string;
   completed_at: string | null;
 };
@@ -198,6 +210,7 @@ export type PublicUser = {
   is_tutor: boolean;
   is_tutee: boolean;
   plan: "free" | "paid";
+  date_joined: string;
 };
 
 

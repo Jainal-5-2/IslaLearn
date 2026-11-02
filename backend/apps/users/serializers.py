@@ -95,6 +95,10 @@ class PublicUserSerializer(serializers.ModelSerializer):
     Public read shape: everything in UserSerializer except email.
     Used by the user detail endpoint so anyone can look up a profile
     by ID without harvesting email addresses.
+
+    date_joined is included (Phase 12) so the profile page can show
+    "Member since <date>" without a second request. It is inherited
+    from AbstractUser and is non-sensitive.
     """
 
     class Meta:
@@ -107,4 +111,5 @@ class PublicUserSerializer(serializers.ModelSerializer):
             "is_tutor",
             "is_tutee",
             "plan",
+            "date_joined",
         ]

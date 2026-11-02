@@ -97,6 +97,7 @@ class TopicProgressTests(APITestCase):
         self.assertEqual(response.data["last_page_index"], 0)
         self.assertFalse(response.data["is_completed"])
         self.assertFalse(response.data["is_unlocked"])
+        self.assertEqual(response.data["quiz_results"], {})
 
         progress = TopicProgress.objects.get(user=self.reader, topic=self.topic)
         self.assertEqual(progress.last_page_index, 0)
@@ -319,6 +320,7 @@ class TopicDetailProgressTests(APITestCase):
         self.assertEqual(response.data["progress"]["last_page_index"], 1)
         self.assertFalse(response.data["progress"]["is_completed"])
         self.assertFalse(response.data["progress"]["is_unlocked"])
+        self.assertEqual(response.data["progress"]["quiz_results"], {})
 
 
 class TopicPageLockTests(APITestCase):
@@ -632,3 +634,340 @@ class TopicCreateResponseTests(APITestCase):
         for page in response.data["pages"]:
             self.assertFalse(page["is_locked"])
             self.assertTrue(page["content"])
+
+
+# ---------------------------------------------------------------------------
+# Phase 12 tests
+# ---------------------------------------------------------------------------
+
+
+class TopicQuizSubmitTests(APITestCase):
+    """
+    Covers POST /api/topics/{id}/quiz/{page_id}/submit/.
+
+    Invariants:
+      - Anonymous gets 401, owner gets 400, unpublished topic 403,
+        unknown topic 404, unknown page 404, non-quiz page 400,
+        empty questions 400.
+      - answers length mismatch is 400.
+      - scoring: only answers matching correct_index count.
+      - passing_score defaults to len(questions) when missing.
+      - passing_score from page content is respected.
+      - a pass writes {score, total, passed} to quiz_results[str(page_id)].
+      - a retake overwrites the entry; no second entry appears.
+      - submit does not touch last_page_index.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="qowner", password="pass-qo-1", email="qo@example.com"
+        )
+        self.reader = User.objects.create_user(
+            username="qreader", password="pass-qr-1", email="qr@example.com"
+        )
+        self.subject = Subject.objects.create(name="QuizSubject")
+        self.topic = Topic.objects.create(
+            subject=self.subject,
+            created_by=self.owner,
+            title="Quiz topic",
+            is_published=True,
+        )
+        self.quiz_page = TopicPage.objects.create(
+            topic=self.topic,
+            order=1,
+            page_type="quiz",
+            content={
+                "questions": [
+                    {"question": "Q1", "options": ["a", "b"], "correct_index": 0},
+                    {"question": "Q2", "options": ["a", "b"], "correct_index": 1},
+                ],
+            },
+        )
+        self.text_page = TopicPage.objects.create(
+            topic=self.topic,
+            order=2,
+            page_type="text",
+            content={"body": "not a quiz"},
+        )
+        self.url = reverse(
+            "topic-quiz-submit", args=[self.topic.id, self.quiz_page.id]
+        )
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_anonymous_rejected(self):
+        response = self.client.post(self.url, {"answers": [0, 1]})
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_owner_rejected(self):
+        self._login(self.owner)
+        response = self.client.post(self.url, {"answers": [0, 1]})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_unpublished_topic_rejected(self):
+        self.topic.is_published = False
+        self.topic.save(update_fields=["is_published"])
+        self._login(self.reader)
+        response = self.client.post(self.url, {"answers": [0, 1]})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unknown_topic_404(self):
+        self._login(self.reader)
+        url = reverse("topic-quiz-submit", args=[999999, self.quiz_page.id])
+        response = self.client.post(url, {"answers": [0, 1]})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_unknown_page_404(self):
+        self._login(self.reader)
+        url = reverse("topic-quiz-submit", args=[self.topic.id, 999999])
+        response = self.client.post(url, {"answers": [0, 1]})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_non_quiz_page_400(self):
+        self._login(self.reader)
+        url = reverse(
+            "topic-quiz-submit", args=[self.topic.id, self.text_page.id]
+        )
+        response = self.client.post(url, {"answers": []})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_empty_questions_400(self):
+        empty_page = TopicPage.objects.create(
+            topic=self.topic,
+            order=3,
+            page_type="quiz",
+            content={"questions": []},
+        )
+        self._login(self.reader)
+        url = reverse("topic-quiz-submit", args=[self.topic.id, empty_page.id])
+        response = self.client.post(url, {"answers": []})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_answers_length_mismatch_400(self):
+        self._login(self.reader)
+        response = self.client.post(self.url, {"answers": [0]})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_all_correct_passes_with_default_passing_score(self):
+        # Default passing_score is len(questions) = 2.
+        self._login(self.reader)
+        response = self.client.post(self.url, {"answers": [0, 1]})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["score"], 2)
+        self.assertEqual(response.data["total"], 2)
+        self.assertTrue(response.data["passed"])
+        self.assertEqual(response.data["passing_score"], 2)
+
+    def test_partial_score_fails_with_default_passing_score(self):
+        self._login(self.reader)
+        response = self.client.post(self.url, {"answers": [0, 0]})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["score"], 1)
+        self.assertFalse(response.data["passed"])
+
+    def test_explicit_passing_score_respected(self):
+        self.quiz_page.content["passing_score"] = 1
+        self.quiz_page.save(update_fields=["content"])
+        self._login(self.reader)
+        response = self.client.post(self.url, {"answers": [0, 0]})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["score"], 1)
+        self.assertTrue(response.data["passed"])
+        self.assertEqual(response.data["passing_score"], 1)
+
+    def test_result_written_to_quiz_results(self):
+        self._login(self.reader)
+        self.client.post(self.url, {"answers": [0, 1]})
+        progress = TopicProgress.objects.get(
+            user=self.reader, topic=self.topic
+        )
+        entry = progress.quiz_results[str(self.quiz_page.id)]
+        self.assertEqual(entry["score"], 2)
+        self.assertEqual(entry["total"], 2)
+        self.assertTrue(entry["passed"])
+
+    def test_retake_overwrites_entry(self):
+        self._login(self.reader)
+        self.client.post(self.url, {"answers": [0, 1]})  # pass
+        self.client.post(self.url, {"answers": [0, 0]})  # fail
+        progress = TopicProgress.objects.get(
+            user=self.reader, topic=self.topic
+        )
+        # Exactly one entry, and it reflects the latest attempt.
+        self.assertEqual(len(progress.quiz_results), 1)
+        entry = progress.quiz_results[str(self.quiz_page.id)]
+        self.assertFalse(entry["passed"])
+        self.assertEqual(entry["score"], 1)
+
+    def test_submit_does_not_touch_last_page_index(self):
+        TopicProgress.objects.create(
+            user=self.reader, topic=self.topic, last_page_index=1
+        )
+        self._login(self.reader)
+        self.client.post(self.url, {"answers": [0, 1]})
+        progress = TopicProgress.objects.get(
+            user=self.reader, topic=self.topic
+        )
+        self.assertEqual(progress.last_page_index, 1)
+
+
+class TopicCompletionGatedOnQuizTests(APITestCase):
+    """
+    is_completed requires reaching the last page AND passing every quiz.
+
+    Invariants:
+      - Reaching the last page with an unpassed quiz leaves
+        is_completed False.
+      - Passing the quiz after reaching the last page flips is_completed
+        on the next progress write.
+      - Topics with no quiz pages keep the old rule (reached last page
+        => completed).
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="gowner", password="pass-go-1", email="go@example.com"
+        )
+        self.reader = User.objects.create_user(
+            username="greader", password="pass-gr-1", email="gr@example.com"
+        )
+        self.subject = Subject.objects.create(name="Gate")
+        self.topic = Topic.objects.create(
+            subject=self.subject,
+            created_by=self.owner,
+            title="Gate topic",
+            is_published=True,
+        )
+        self.quiz_page = TopicPage.objects.create(
+            topic=self.topic,
+            order=1,
+            page_type="quiz",
+            content={
+                "questions": [
+                    {"question": "Q1", "options": ["a", "b"], "correct_index": 0},
+                ],
+            },
+        )
+        TopicPage.objects.create(
+            topic=self.topic,
+            order=2,
+            page_type="text",
+            content={"body": "last page"},
+        )
+        self.progress_url = reverse("topic-progress", args=[self.topic.id])
+        self.quiz_url = reverse(
+            "topic-quiz-submit", args=[self.topic.id, self.quiz_page.id]
+        )
+
+    def _login(self, user):
+        self.client.force_authenticate(user=user)
+
+    def _walk(self, up_to):
+        for i in range(up_to + 1):
+            self.client.post(self.progress_url, {"last_page_index": i})
+
+    def test_last_page_without_passing_quiz_is_not_completed(self):
+        self._login(self.reader)
+        self._walk(1)
+        progress = TopicProgress.objects.get(
+            user=self.reader, topic=self.topic
+        )
+        self.assertEqual(progress.last_page_index, 1)
+        self.assertFalse(progress.is_completed)
+        self.assertIsNone(progress.completed_at)
+
+    def test_passing_quiz_then_touching_last_page_completes(self):
+        self._login(self.reader)
+        self._walk(1)
+        self.client.post(self.quiz_url, {"answers": [0]})
+        # A progress write is what re-evaluates completion.
+        response = self.client.post(
+            self.progress_url, {"last_page_index": 1}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_completed"])
+        self.assertIsNotNone(response.data["completed_at"])
+
+    def test_no_quiz_topic_completes_on_last_page(self):
+        no_quiz = Topic.objects.create(
+            subject=self.subject,
+            created_by=self.owner,
+            title="No quiz",
+            is_published=True,
+        )
+        TopicPage.objects.create(
+            topic=no_quiz, order=1, page_type="text", content={"body": "only"}
+        )
+        self._login(self.reader)
+        response = self.client.post(
+            reverse("topic-progress", args=[no_quiz.id]),
+            {"last_page_index": 0},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_completed"])
+
+
+class TopicListProgressForFilterTests(APITestCase):
+    """
+    ?progress_for=<user_id> filters /api/topics/ to topics where that
+    user has a TopicProgress row.
+
+    Invariants:
+      - Only topics with a progress row for the target user appear.
+      - Topics without a progress row are excluded.
+      - The filter combines with the published rule (unpublished topics
+        stay hidden from non-owners even when the target has progress).
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="pfowner", password="pass-po-1", email="po@example.com"
+        )
+        self.reader = User.objects.create_user(
+            username="pfreader", password="pass-pr-1", email="pr@example.com"
+        )
+        self.subject = Subject.objects.create(name="PF")
+        self.topic_with = Topic.objects.create(
+            subject=self.subject,
+            created_by=self.owner,
+            title="With progress",
+            is_published=True,
+        )
+        self.topic_without = Topic.objects.create(
+            subject=self.subject,
+            created_by=self.owner,
+            title="Without progress",
+            is_published=True,
+        )
+        TopicPage.objects.create(
+            topic=self.topic_with, order=1, page_type="text", content={"body": "a"}
+        )
+        TopicPage.objects.create(
+            topic=self.topic_without, order=1, page_type="text", content={"body": "b"}
+        )
+        TopicProgress.objects.create(
+            user=self.reader, topic=self.topic_with, last_page_index=0
+        )
+
+    def test_progress_for_returns_only_topics_with_progress(self):
+        self.client.force_authenticate(user=self.reader)
+        response = self.client.get(
+            reverse("topic-list"), {"progress_for": self.reader.id}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = [row["id"] for row in response.data["results"]]
+        self.assertIn(self.topic_with.id, ids)
+        self.assertNotIn(self.topic_without.id, ids)
+
+    def test_progress_for_owner_still_returns_own_topics(self):
+        # The owner has no progress row on their own topics, so the
+        # filter alone would return nothing. But the published-or-own
+        # rule still applies; a query with progress_for=<owner> only
+        # matches topics the owner has progress on, which is empty.
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.get(
+            reverse("topic-list"), {"progress_for": self.owner.id}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 0)

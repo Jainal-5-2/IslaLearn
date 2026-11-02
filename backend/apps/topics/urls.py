@@ -7,6 +7,7 @@ from .views import (
     TopicPageDetailView,
     TopicProgressView,
     TopicUnlockView,
+    TopicQuizSubmitView,
 )
 
 urlpatterns = [
@@ -31,5 +32,11 @@ urlpatterns = [
     # Paywall unlock
     path(
         "topics/<int:pk>/unlock/", TopicUnlockView.as_view(), name="topic-unlock"
+    ),
+    # Quiz submit (Phase 12)
+    path(
+        "topics/<int:pk>/quiz/<int:page_id>/submit/",
+        TopicQuizSubmitView.as_view(),
+        name="topic-quiz-submit",
     ),
 ]

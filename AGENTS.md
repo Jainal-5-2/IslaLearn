@@ -30,6 +30,9 @@ commit message.
 ### Don't go overboard with code comments
 When adding comments, make it short and clear. This does not apply to comments used for auto generated documentation.
 
+### Don't give partial codes.
+Give me full class, methods, or file. Never partial that I need to manually follow the changes. I might miss them.
+
 ### Backend
 - Every app has `tests.py`. `python manage.py test apps.<app>` must pass
   after any change to that app.

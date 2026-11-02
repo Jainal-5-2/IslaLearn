@@ -24,6 +24,7 @@ export type {
   Topic,
   TopicPage,
   TopicProgress,
+  QuizResult,
   LoginResponse,
   RequestStatus,
   ApplicationStatus,
@@ -67,6 +68,7 @@ export {
   deleteTopic,
   recordProgress,
   unlockTopic,
+  submitQuiz,
 } from "./topics";
 
 // Pages
@@ -109,7 +111,6 @@ export {
   getSession,
 } from "./sessions";
 
-// Messages
 // Messages
 export {
   getThreads,

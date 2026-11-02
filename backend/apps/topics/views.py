@@ -15,6 +15,7 @@ from .serializers import (
     TopicPageWriteSerializer,
     TopicProgressSerializer,
     TopicProgressWriteSerializer,
+    QuizSubmitSerializer,
 )
 
 
@@ -37,6 +38,20 @@ def _progress_map_for(user, topics):
     }
 
 
+def _quizzes_all_passed(topic, progress):
+    """
+    True if every quiz page in `topic` has a passing entry in
+    `progress.quiz_results`. Vacuously true if the topic has no quiz
+    pages, so non-quiz topics keep the old "reached last page" rule.
+    """
+    quiz_pages = topic.pages.filter(page_type="quiz")
+    for page in quiz_pages:
+        entry = progress.quiz_results.get(str(page.id))
+        if not entry or not entry.get("passed", False):
+            return False
+    return True
+
+
 class TopicListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
@@ -52,6 +67,15 @@ class TopicListCreateView(generics.ListCreateAPIView):
         created_by = self.request.query_params.get("created_by")
         if created_by:
             queryset = queryset.filter(created_by_id=created_by)
+
+        # Phase 12: profile "Learning" section. Returns only topics
+        # where the given user has a TopicProgress row, so the profile
+        # can show "Continue" / "Completed" badges.
+        progress_for = self.request.query_params.get("progress_for")
+        if progress_for:
+            queryset = queryset.filter(
+                progress_entries__user_id=progress_for
+            ).distinct()
 
         if self.request.user.is_authenticated:
             queryset = queryset.filter(
@@ -92,6 +116,7 @@ class TopicListCreateView(generics.ListCreateAPIView):
         return Response(
             read_serializer.data, status=status.HTTP_201_CREATED, headers=headers
         )
+
 
 class TopicDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Topic.objects.select_related("subject", "created_by").prefetch_related(
@@ -207,11 +232,15 @@ class TopicProgressView(APIView):
           pages via the API. A user at page 1 cannot POST page 5; they
           must POST page 2 first.
     - When reset=true, last_page_index is assigned unconditionally.
-    - is_completed flips True once last_page_index reaches the last page,
-      and completed_at records the timestamp of that flip.
+    - is_completed flips True once last_page_index reaches the last page
+      AND every quiz page in the topic has a passed entry in
+      quiz_results. Passing the last page without passing a quiz leaves
+      is_completed False (Phase 12).
     - Rejects calls from the topic's own creator.
     - Rejects calls on unpublished topics.
     - Does not touch is_unlocked. Paywall and progress are separate.
+    - Does not touch quiz_results. Quiz results are written only by
+      TopicQuizSubmitView.
     """
 
     permission_classes = [permissions.IsAuthenticated]
@@ -259,7 +288,12 @@ class TopicProgressView(APIView):
             progress.last_page_index = max(progress.last_page_index, incoming_index)
 
         was_completed = progress.is_completed
-        is_now_complete = progress.last_page_index >= page_count - 1
+        reached_last_page = progress.last_page_index >= page_count - 1
+        # Phase 12: completion requires all quizzes passed, not just
+        # reaching the last page. _quizzes_all_passed is vacuously true
+        # for topics without quiz pages, so non-quiz topics keep the
+        # old rule.
+        is_now_complete = reached_last_page and _quizzes_all_passed(topic, progress)
 
         progress.is_completed = is_now_complete
 
@@ -311,3 +345,106 @@ class TopicUnlockView(APIView):
             progress.save(update_fields=["is_unlocked", "last_visited_at"])
 
         return Response(TopicProgressSerializer(progress).data)
+
+
+class TopicQuizSubmitView(APIView):
+    """
+    POST /api/topics/{id}/quiz/{page_id}/submit/
+
+    Request body:
+        { "answers": [<int>, ...] }
+
+    Scores the submission against the page's quiz, compares to the
+    page's passing_score, and stores the result in
+    TopicProgress.quiz_results[str(page_id)]. A retake overwrites the
+    entry; there is no attempt history in v1.
+
+    - Rejects the topic's own creator (same rule as progress).
+    - Rejects unpublished topics.
+    - Rejects pages that are not quiz pages.
+    - Rejects answers whose length does not match the question count.
+    - Does not touch last_page_index; the reader's debounced progress
+      writes continue to own that field.
+
+    passing_score defaults to len(questions) when the page does not set
+    it, so a quiz authored before Phase 12 passes only on a perfect
+    score. Do not infer a percentage; the field is an integer count of
+    correct answers required.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk, page_id):
+        try:
+            topic = Topic.objects.prefetch_related("pages").get(pk=pk)
+        except Topic.DoesNotExist:
+            raise NotFound("Topic not found.")
+
+        if topic.created_by_id == request.user.id:
+            raise ValidationError(
+                "Topic creators do not submit quizzes on their own topics."
+            )
+
+        if not topic.is_published:
+            raise PermissionDenied("You cannot read this topic.")
+
+        try:
+            page = topic.pages.get(pk=page_id)
+        except TopicPage.DoesNotExist:
+            raise NotFound("Page not found.")
+
+        if page.page_type != "quiz":
+            raise ValidationError("This page is not a quiz page.")
+
+        questions = page.content.get("questions") or []
+        if not questions:
+            raise ValidationError("This quiz has no questions.")
+
+        write_serializer = QuizSubmitSerializer(data=request.data)
+        write_serializer.is_valid(raise_exception=True)
+        answers = write_serializer.validated_data["answers"]
+
+        if len(answers) != len(questions):
+            raise ValidationError(
+                {
+                    "answers": (
+                        f"Expected {len(questions)} answer(s), "
+                        f"got {len(answers)}."
+                    )
+                }
+            )
+
+        score = 0
+        for q, given in zip(questions, answers):
+            correct_index = q.get("correct_index")
+            if isinstance(correct_index, int) and given == correct_index:
+                score += 1
+
+        total = len(questions)
+        raw_passing = page.content.get("passing_score")
+        passing_score = (
+            raw_passing
+            if isinstance(raw_passing, int) and raw_passing > 0
+            else total
+        )
+        passed = score >= passing_score
+
+        progress, _ = TopicProgress.objects.get_or_create(
+            user=request.user, topic=topic
+        )
+        # JSONField keys must be strings. Overwrite on retake.
+        progress.quiz_results[str(page.id)] = {
+            "score": score,
+            "total": total,
+            "passed": passed,
+        }
+        progress.save(update_fields=["quiz_results", "last_visited_at"])
+
+        return Response(
+            {
+                "score": score,
+                "total": total,
+                "passed": passed,
+                "passing_score": passing_score,
+            }
+        )

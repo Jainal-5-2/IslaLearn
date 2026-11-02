@@ -71,6 +71,10 @@ class TopicPageWriteSerializer(serializers.ModelSerializer):
 class TopicProgressSerializer(serializers.ModelSerializer):
     """
     Read serializer for a user's progress on a Topic.
+
+    quiz_results is included read-only so the reader can branch the
+    Next/Finished buttons on quiz page pass state without a second
+    request.
     """
 
     class Meta:
@@ -79,6 +83,7 @@ class TopicProgressSerializer(serializers.ModelSerializer):
             "last_page_index",
             "is_unlocked",
             "is_completed",
+            "quiz_results",
             "last_visited_at",
             "completed_at",
         ]
@@ -189,3 +194,19 @@ class TopicProgressWriteSerializer(serializers.Serializer):
 
     last_page_index = serializers.IntegerField(min_value=0)
     reset = serializers.BooleanField(default=False)
+
+
+class QuizSubmitSerializer(serializers.Serializer):
+    """
+    Input serializer for POST /api/topics/{id}/quiz/{page_id}/submit/.
+
+    answers is a list of selected option indices, one per question, in
+    the same order as the page's questions. The view scores against the
+    page and compares to the page's passing_score. Validation of the
+    length/range is done in the view because it needs the page content.
+    """
+
+    answers = serializers.ListField(
+        child=serializers.IntegerField(min_value=0),
+        allow_empty=True,
+    )

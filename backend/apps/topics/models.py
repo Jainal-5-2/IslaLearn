@@ -69,7 +69,10 @@ class TopicPage(models.Model):
     # JSONField stores:
     # - text: {"body": "..."}
     # - video: {"url": "..."}
-    # - quiz: {"questions": [{"question": "...", "options": ["A", "B"], "correct_index": 0}]}
+    # - quiz: {"questions": [{"question": "...", "options": ["A", "B"], "correct_index": 0}],
+    #          "passing_score": <int, optional>}
+    #   passing_score defaults to len(questions) when missing, so a quiz
+    #   page written before Phase 12 passes only on a perfect score.
     content = models.JSONField(default=dict)
 
     class Meta:
@@ -90,7 +93,15 @@ class TopicProgress(models.Model):
     - is_unlocked: paywall state. True means the user can read every page
       of the topic, past free_page_count. False means pages past
       free_page_count stay locked. Independent of last_page_index.
-    - is_completed: set once last_page_index reaches the last page.
+    - quiz_results: per-quiz outcome, keyed by page id as a string (JSON
+      keys must be strings). Shape:
+        { "<page_id>": { "score": int, "total": int, "passed": bool } }
+      One entry per quiz page per user. A retake overwrites the entry;
+      there is no attempt history in v1.
+    - is_completed: set once last_page_index reaches the last page AND
+      every quiz page in the topic has been passed. A user can reach the
+      last page without passing a quiz; is_completed stays False until
+      they do.
     - completed_at: timestamp of when is_completed flipped to True, for
       display. Null while not completed.
     - One row per (user, topic). Upserted by the progress and unlock
@@ -116,6 +127,11 @@ class TopicProgress(models.Model):
     # this to True during MVP. When payments land, the payment webhook
     # sets it.
     is_unlocked = models.BooleanField(default=False)
+
+    # Per-quiz outcome, keyed by str(page_id). Overwritten on retake.
+    # Read by the completion rule and by the reader to branch the
+    # Next/Finished buttons.
+    quiz_results = models.JSONField(default=dict, blank=True)
 
     is_completed = models.BooleanField(default=False)
     last_visited_at = models.DateTimeField(auto_now=True)
