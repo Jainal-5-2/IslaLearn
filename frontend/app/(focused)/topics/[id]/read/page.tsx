@@ -15,20 +15,24 @@ import {
   ChevronRight,
   RotateCcw,
   CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import {
   getTopic,
   getMe,
   recordProgress,
+  submitQuiz,
   unlockTopic,
   Topic,
   TopicPage,
+  QuizResult,
   User,
   ApiError,
 } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { showToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
 const PROGRESS_DEBOUNCE_MS = 500;
@@ -60,6 +64,12 @@ function TopicReaderPage() {
   const [unlocking, setUnlocking] = useState(false);
 
   const [progressLastPageIndex, setProgressLastPageIndex] = useState(-1);
+  // Per-page quiz pass state, mirrored from progress.quiz_results and
+  // updated optimistically after a successful submit. Keyed by page id
+  // as a string, matching the backend JSONField.
+  const [quizResults, setQuizResults] = useState<Record<string, QuizResult>>(
+    {}
+  );
 
   const isOwnerRef = useRef<boolean | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -80,6 +90,7 @@ function TopicReaderPage() {
 
         if (topicData.progress) {
           setProgressLastPageIndex(topicData.progress.last_page_index);
+          setQuizResults(topicData.progress.quiz_results ?? {});
         }
 
         if (
@@ -155,10 +166,16 @@ function TopicReaderPage() {
     setActivePageIndex(0);
     setProgressLastPageIndex(0);
     setShowResumeBanner(false);
+    // Reset also clears quiz_results server-side (the reset write is
+    // unconditional and is_completed is recomputed from scratch), but
+    // the reader keeps local pass state for the current session so the
+    // user is not forced to re-answer quizzes they just took. The next
+    // topic load will show the truth.
     if (topic && isOwnerRef.current === false) {
       recordProgress(topic.id, 0, { reset: true })
         .then((updated) => {
           setProgressLastPageIndex(updated.last_page_index);
+          setQuizResults(updated.quiz_results ?? {});
         })
         .catch(() => { });
     }
@@ -186,7 +203,8 @@ function TopicReaderPage() {
       // index at a time. TopicProgressView rejects a single POST that
       // jumps more than one page, so a reader whose debounced writes
       // coalesced or failed would otherwise fail to record completion
-      // silently (the old .catch(() => {}) swallowed the 400).
+      // silently. is_completed is now also gated on quiz passes
+      // server-side; this walk just advances last_page_index.
       for (let i = progressLastPageIndex + 1; i <= activePageIndex; i++) {
         await recordProgress(topic.id, i).catch(() => { });
       }
@@ -194,6 +212,15 @@ function TopicReaderPage() {
     } finally {
       setFinishing(false);
     }
+  }
+
+  /**
+   * Called by QuizPageRenderer after a successful submit. Updates the
+   * local quiz_results mirror so the reader's Next/Finished gating and
+   * the sidebar reflect the new pass state without a full topic refetch.
+   */
+  function handleQuizSubmitted(pageId: number, result: QuizResult) {
+    setQuizResults((prev) => ({ ...prev, [String(pageId)]: result }));
   }
 
   if (loading) {
@@ -219,11 +246,26 @@ function TopicReaderPage() {
   const completedUpTo = Math.max(activePageIndex, progressLastPageIndex) - 1;
   const isLastPage = activePageIndex === pages.length - 1;
 
+  /**
+   * A quiz page is considered passed when the server recorded it. Used
+   * to decide whether to allow advancing past the page.
+   */
+  function isQuizPassed(page: TopicPage): boolean {
+    if (page.page_type !== "quiz") return true;
+    return quizResults[String(page.id)]?.passed === true;
+  }
+
+  const activePageQuizPassed =
+    activePage && activePage.page_type === "quiz"
+      ? isQuizPassed(activePage)
+      : true;
+
   const handleNext = () => {
-    if (activePageIndex < pages.length - 1) {
-      setActivePageIndex(activePageIndex + 1);
-      if (showResumeBanner) setShowResumeBanner(false);
-    }
+    if (activePageIndex >= pages.length - 1) return;
+    // Soft gate: do not advance past an unpassed quiz.
+    if (!activePageQuizPassed) return;
+    setActivePageIndex(activePageIndex + 1);
+    if (showResumeBanner) setShowResumeBanner(false);
   };
 
   const handlePrev = () => {
@@ -323,6 +365,12 @@ function TopicReaderPage() {
                 const progressLocked = !isOwner && index > unlockedUpTo;
                 const payLocked = page.is_locked;
                 const isCompleted = !isOwner && index <= completedUpTo;
+                const quizPassed =
+                  page.page_type === "quiz" && isQuizPassed(page);
+                const quizFailed =
+                  page.page_type === "quiz" &&
+                  !quizPassed &&
+                  index <= completedUpTo;
 
                 return (
                   <button
@@ -368,6 +416,13 @@ function TopicReaderPage() {
                         className="h-3.5 w-3.5 text-green-600 shrink-0"
                         aria-label="Completed"
                       />
+                    ) : quizFailed && !progressLocked ? (
+                      <span
+                        className="text-[10px] font-medium text-orange-600 shrink-0"
+                        aria-label="Quiz not passed"
+                      >
+                        Retry
+                      </span>
                     ) : payLocked || progressLocked ? (
                       <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     ) : null}
@@ -457,7 +512,15 @@ function TopicReaderPage() {
                     )}
                     {activePage.page_type === "quiz" && (
                       <QuizPageRenderer
-                        content={activePage.content}
+                        key={activePage.id}
+                        topicId={topic.id}
+                        page={activePage}
+                        existingResult={
+                          quizResults[String(activePage.id)] ?? null
+                        }
+                        onSubmitted={(result) =>
+                          handleQuizSubmitted(activePage.id, result)
+                        }
                         onFinish={handleFinish}
                         isLastPage={isLastPage}
                         finishing={finishing}
@@ -489,7 +552,13 @@ function TopicReaderPage() {
                     ) : (
                       <button
                         onClick={handleNext}
-                        className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-accent text-accent-foreground hover:bg-accent/90 font-medium transition-colors"
+                        disabled={!activePageQuizPassed}
+                        title={
+                          !activePageQuizPassed
+                            ? "Pass this quiz to continue"
+                            : undefined
+                        }
+                        className="inline-flex items-center gap-1 h-10 px-4 rounded-md bg-accent text-accent-foreground hover:bg-accent/90 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         Next
                         <ChevronRight className="h-4 w-4" />
@@ -613,7 +682,8 @@ function ResetProgressDialog({
                   className="text-sm text-muted-foreground mt-1"
                 >
                   Your reading progress on this topic will be reset to page 1
-                  of {totalPages}. This cannot be undone.
+                  of {totalPages}. Quiz results will also be cleared. This
+                  cannot be undone.
                 </p>
               </div>
             </div>
@@ -681,22 +751,68 @@ function VideoPageRenderer({ content }: { content: any }) {
   );
 }
 
+/**
+ * Quiz page for the reader. Phase 12 moved scoring to the server:
+ * answers are POSTed to /topics/{id}/quiz/{pageId}/submit/, the server
+ * returns {score, total, passed, passing_score}, and only a passing
+ * result enables Next/Finished.
+ *
+ * Local state:
+ *   - `selected` per question, so the user can change their pick before
+ *     submitting.
+ *   - `submittedAnswers` snapshot, so after submission we can show which
+ *     options the user picked and which were right.
+ *   - `result`, the last server response. Null until the first submit.
+ *
+ * Retake: resetting local state (Restart button) clears `result` and
+ * re-enables the answer form. The next submit overwrites
+ * quiz_results[str(pageId)] server-side; the parent's onSubmitted
+ * callback updates the mirror so the sidebar and Next button reflect it.
+ */
 function QuizPageRenderer({
-  content,
+  topicId,
+  page,
+  existingResult,
+  onSubmitted,
   onFinish,
   isLastPage,
   finishing,
 }: {
-  content: any;
+  topicId: number;
+  page: TopicPage;
+  existingResult: QuizResult | null;
+  onSubmitted: (result: QuizResult) => void;
   onFinish: () => void;
   isLastPage: boolean;
   finishing: boolean;
 }) {
-  const questions = content?.questions || [];
-  const [currentQIndex, setCurrentQIndex] = useState(0);
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [isAnswered, setIsAnswered] = useState(false);
-  const [score, setScore] = useState(0);
+  const questions: {
+    question: string;
+    options: string[];
+    correct_index: number;
+  }[] = page.content?.questions || [];
+
+  // Whether the user has already passed this quiz in a prior visit.
+  // If so, we skip straight to the "passed" view: they can still retake,
+  // but Next/Finished are already enabled from the parent's perspective.
+  const alreadyPassed = existingResult?.passed === true;
+
+  // Local selection per question. Null means unanswered.
+  const [selected, setSelected] = useState<(number | null)[]>(() =>
+    questions.map(() => null)
+  );
+  // Snapshot of answers at submit time, for the review view.
+  const [submittedAnswers, setSubmittedAnswers] = useState<number[] | null>(
+    null
+  );
+  // Last server result in this session. Starts from the parent's mirror
+  // so a reader who already passed sees the review view without
+  // re-submitting.
+  const [result, setResult] = useState<QuizResult | null>(
+    existingResult ?? null
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   if (questions.length === 0) {
     return (
@@ -704,114 +820,248 @@ function QuizPageRenderer({
     );
   }
 
-  const q = questions[currentQIndex];
-  const isLastQuestion = currentQIndex === questions.length - 1;
+  const allAnswered = selected.every((s) => s !== null);
+  const showingReview = submittedAnswers !== null && result !== null;
+  const passed = result?.passed === true;
 
-  const handleSubmit = () => {
-    if (selectedOption === null) return;
-    setIsAnswered(true);
-    if (selectedOption === q.correct_index) {
-      setScore(score + 1);
+  async function handleSubmit() {
+    if (!allAnswered) return;
+    const answers = selected as number[];
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const res = await submitQuiz(topicId, page.id, answers);
+      const quizResult: QuizResult = {
+        score: res.score,
+        total: res.total,
+        passed: res.passed,
+      };
+      setResult(quizResult);
+      setSubmittedAnswers(answers);
+      onSubmitted(quizResult);
+      if (res.passed) {
+        showToast(
+          `Passed: ${res.score} of ${res.total}.`
+        );
+      } else {
+        showToast(
+          `Not yet: ${res.score} of ${res.total}. Need ${res.passing_score} to pass.`
+        );
+      }
+    } catch (e) {
+      setSubmitError(
+        e instanceof Error ? e.message : "Failed to submit quiz."
+      );
+    } finally {
+      setSubmitting(false);
     }
-  };
+  }
 
-  const handleNext = () => {
-    if (isLastQuestion) {
-      setCurrentQIndex(0);
-      setSelectedOption(null);
-      setIsAnswered(false);
-      setScore(0);
-      return;
-    }
-    setCurrentQIndex(currentQIndex + 1);
-    setSelectedOption(null);
-    setIsAnswered(false);
-  };
+  function handleRestart() {
+    setSelected(questions.map(() => null));
+    setSubmittedAnswers(null);
+    setResult(null);
+    setSubmitError("");
+  }
 
-  return (
-    <div className="max-w-2xl mx-auto space-y-6 min-w-0">
-      <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
-        <span>
-          Question {currentQIndex + 1} of {questions.length}
-        </span>
-        <span>Score: {score}</span>
-      </div>
+  // ---- Review view: submitted at least once ----
+  if (showingReview && submittedAnswers && result) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6 min-w-0">
+        <div
+          className={cn(
+            "rounded-xl border-2 p-5",
+            passed
+              ? "border-green-500 bg-green-500/5"
+              : "border-orange-500 bg-orange-500/5"
+          )}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            {passed ? (
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+            ) : (
+              <RotateCcw className="h-5 w-5 text-orange-600" />
+            )}
+            <h3 className="text-lg font-semibold text-foreground">
+              {passed ? "Quiz passed" : "Not passed yet"}
+            </h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            You scored <span className="font-semibold text-foreground">
+              {result.score}
+            </span>{" "}
+            of {result.total}.{" "}
+            {passed
+              ? "You can continue."
+              : "Review the answers below and try again. Passing this quiz is required to move on."}
+          </p>
+        </div>
 
-      <div className="bg-card border border-border rounded-xl p-6 min-w-0">
-        <h3 className="text-xl font-semibold mb-6 break-words">{q.question}</h3>
-
-        <div className="space-y-3">
-          {q.options.map((opt: string, i: number) => {
-            const isSelected = selectedOption === i;
-            const isCorrect = i === q.correct_index;
-
-            let optionClass =
-              "border-border hover:border-accent/50 bg-background";
-            if (isAnswered) {
-              if (isCorrect) optionClass = "border-green-500 bg-green-500/10";
-              else if (isSelected && !isCorrect)
-                optionClass = "border-red-500 bg-red-500/10";
-              else optionClass = "border-border opacity-50";
-            } else if (isSelected) {
-              optionClass = "border-accent bg-accent/5 ring-1 ring-accent";
-            }
-
+        <div className="space-y-4">
+          {questions.map((q, qi) => {
+            const given = submittedAnswers[qi];
+            const isCorrect = given === q.correct_index;
             return (
-              <button
-                key={i}
-                onClick={() => !isAnswered && setSelectedOption(i)}
-                disabled={isAnswered}
-                className={cn(
-                  "w-full text-left px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-between gap-2 min-w-0",
-                  optionClass
-                )}
+              <div
+                key={qi}
+                className="bg-card border border-border rounded-xl p-5"
               >
-                <span className="break-words min-w-0">{opt}</span>
-                {isAnswered && isCorrect && (
-                  <span className="text-green-600 text-sm font-bold shrink-0">
-                    Correct
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Question {qi + 1}
                   </span>
-                )}
-                {isAnswered && isSelected && !isCorrect && (
-                  <span className="text-red-600 text-sm font-bold shrink-0">
-                    Incorrect
+                  <span
+                    className={cn(
+                      "text-xs font-semibold px-2 py-0.5 rounded",
+                      isCorrect
+                        ? "bg-green-500/10 text-green-600"
+                        : "bg-red-500/10 text-red-600"
+                    )}
+                  >
+                    {isCorrect ? "Correct" : "Incorrect"}
                   </span>
-                )}
-              </button>
+                </div>
+                <h4 className="text-base font-medium mb-3 break-words">
+                  {q.question}
+                </h4>
+                <ul className="space-y-2">
+                  {q.options.map((opt, oi) => {
+                    const isTheAnswer = oi === q.correct_index;
+                    const isTheChoice = oi === given;
+                    let cls =
+                      "border-border bg-background text-foreground";
+                    if (isTheAnswer) {
+                      cls = "border-green-500 bg-green-500/10";
+                    } else if (isTheChoice) {
+                      cls = "border-red-500 bg-red-500/10";
+                    }
+                    return (
+                      <li
+                        key={oi}
+                        className={cn(
+                          "px-3 py-2 rounded-lg border-2 text-sm break-words flex items-center justify-between gap-2",
+                          cls
+                        )}
+                      >
+                        <span>{opt}</span>
+                        {isTheAnswer && (
+                          <span className="text-xs font-semibold text-green-600 shrink-0">
+                            Correct answer
+                          </span>
+                        )}
+                        {!isTheAnswer && isTheChoice && (
+                          <span className="text-xs font-semibold text-red-600 shrink-0">
+                            Your pick
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             );
           })}
         </div>
 
-        <div className="mt-8 flex flex-wrap justify-end gap-2">
-          {!isAnswered ? (
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
+          <button
+            onClick={handleRestart}
+            className="inline-flex items-center gap-1 h-10 px-4 rounded-md border border-border hover:bg-muted font-medium transition-colors"
+          >
+            <RotateCcw className="h-4 w-4" />
+            {passed ? "Retake quiz" : "Try again"}
+          </button>
+          {passed && isLastPage && (
             <button
-              onClick={handleSubmit}
-              disabled={selectedOption === null}
-              className="h-10 px-6 rounded-md bg-accent text-accent-foreground font-medium disabled:opacity-50 transition-colors"
+              onClick={onFinish}
+              disabled={finishing}
+              className="inline-flex items-center gap-1 h-10 px-6 rounded-md bg-green-600 text-white hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              Check Answer
+              <CheckCircle2 className="h-4 w-4" />
+              {finishing ? "Finishing..." : "Finished"}
             </button>
-          ) : (
-            <>
-              <button
-                onClick={handleNext}
-                className="h-10 px-6 rounded-md bg-accent text-accent-foreground font-medium transition-colors"
-              >
-                {isLastQuestion ? "Restart Quiz" : "Next Question"}
-              </button>
-              {isLastQuestion && isLastPage && (
-                <button
-                  onClick={onFinish}
-                  disabled={finishing}
-                  className="inline-flex items-center gap-1 h-10 px-6 rounded-md bg-green-600 text-white hover:bg-green-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  {finishing ? "Finishing..." : "Finished"}
-                </button>
-              )}
-            </>
           )}
         </div>
+      </div>
+    );
+  }
+
+  // ---- Answering view ----
+  return (
+    <div className="max-w-2xl mx-auto space-y-6 min-w-0">
+      <div className="flex items-center justify-between text-sm text-muted-foreground mb-1">
+        <span>
+          {questions.length} question{questions.length === 1 ? "" : "s"}
+        </span>
+        <span>
+          {selected.filter((s) => s !== null).length} answered
+        </span>
+      </div>
+
+      {alreadyPassed && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm text-foreground">
+          You already passed this quiz. Answer again to retake, or use the
+          Next / Finished buttons below to continue.
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {questions.map((q, qi) => (
+          <div
+            key={qi}
+            className="bg-card border border-border rounded-xl p-5"
+          >
+            <h3 className="text-base font-semibold mb-4 break-words">
+              <span className="text-muted-foreground mr-2">
+                {qi + 1}.
+              </span>
+              {q.question}
+            </h3>
+            <div className="space-y-2">
+              {q.options.map((opt, oi) => {
+                const isSelected = selected[qi] === oi;
+                return (
+                  <button
+                    key={oi}
+                    type="button"
+                    onClick={() => {
+                      setSelected((prev) => {
+                        const next = [...prev];
+                        next[qi] = oi;
+                        return next;
+                      });
+                    }}
+                    className={cn(
+                      "w-full text-left px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-between gap-2 min-w-0",
+                      isSelected
+                        ? "border-accent bg-accent/5 ring-1 ring-accent"
+                        : "border-border hover:border-accent/50 bg-background"
+                    )}
+                  >
+                    <span className="break-words min-w-0">{opt}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {submitError && (
+        <p className="text-sm text-red-600 bg-red-500/10 p-3 rounded-lg">
+          {submitError}
+        </p>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={handleSubmit}
+          disabled={!allAnswered || submitting}
+          className="inline-flex items-center gap-1 h-10 px-6 rounded-md bg-accent text-accent-foreground font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+          {submitting ? "Submitting..." : "Submit answers"}
+        </button>
       </div>
     </div>
   );
