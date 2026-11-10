@@ -9,6 +9,7 @@ interface PasswordInputProps {
   minLength?: number;
   placeholder?: string;
   id?: string;
+  disabled?: boolean;
 }
 
 export function PasswordInput({
@@ -18,6 +19,7 @@ export function PasswordInput({
   minLength,
   placeholder,
   id,
+  disabled = false,
 }: PasswordInputProps) {
   const [visible, setVisible] = useState(false);
 
@@ -31,7 +33,8 @@ export function PasswordInput({
         required={required}
         minLength={minLength}
         placeholder={placeholder}
-        className="w-full border border-border bg-background text-foreground rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-accent/50"
+        disabled={disabled}
+        className="w-full border border-border bg-background text-foreground rounded-lg px-3 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-60"
       />
       <button
         type="button"
@@ -39,7 +42,8 @@ export function PasswordInput({
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
         tabIndex={-1}
-        className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition-colors"
+        disabled={disabled}
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60 disabled:hover:text-muted-foreground"
       >
         {visible ? <EyeOffIcon /> : <EyeIcon />}
       </button>

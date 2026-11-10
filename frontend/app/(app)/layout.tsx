@@ -27,7 +27,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   function handleLogout() {
     logout();
-    router.replace("/login");
+    window.location.href = "/login";
   }
 
   async function handleRetry() {
