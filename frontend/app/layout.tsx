@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/toast";
 import { ThemeProvider } from "@/components/theme-provider";
+import NextTopLoader from "nextjs-toploader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,7 +21,6 @@ export const metadata: Metadata = {
     "Teach what you know, learn what you don't. A peer tutoring platform for BaSU CS students, async topics, live broadcasts, and 1:1 help.",
 };
 
-// Inline script runs before paint to prevent the light-to-dark flash.
 const themeScript = `
 (function() {
   try {
@@ -43,6 +43,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col">
+        <NextTopLoader
+          color="var(--accent)"
+          height={3}
+          showSpinner={false}
+          shadow={false}
+        />
         <ThemeProvider>
           {children}
         </ThemeProvider>

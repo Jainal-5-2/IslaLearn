@@ -11,6 +11,7 @@ import {
   Subject,
 } from "@/lib/api";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { SubmittingOverlay } from "@/components/submitting-overlay";
 
 export default function Page() {
   return (
@@ -32,6 +33,12 @@ function NewRequestPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setSubmitting(false);
+    setError("");
+    setSubjectId("");
+    setDescription("");
+    setPreferredDate("");
+    setPreferredTimeOfDay("");
     getSubjects()
       .then(setSubjects)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed"))
@@ -69,10 +76,12 @@ function NewRequestPage() {
         description,
         preferred_time,
       });
+      // Do not reset submitting here. The overlay must stay up through
+      // the route transition; this component unmounts when the detail
+      // page mounts, which is what removes it.
       router.push(`/requests/${req.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create request");
-    } finally {
       setSubmitting(false);
     }
   }
@@ -97,6 +106,13 @@ function NewRequestPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
+      {submitting && (
+        <SubmittingOverlay
+          title="Posting your request..."
+          subtitle="Taking you to the request page."
+        />
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Post a Request</h1>

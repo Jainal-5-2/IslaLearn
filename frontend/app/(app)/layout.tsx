@@ -3,6 +3,7 @@
 import { AppShell } from "@/components/app-shell";
 import { NotificationProvider } from "@/components/notification-provider";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { SubmittingOverlay } from "@/components/submitting-overlay";
 import { getMe, isLoggedIn, logout, User } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -12,6 +13,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState("");
   const [retrying, setRetrying] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -26,6 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   function handleLogout() {
+    setLoggingOut(true);
     logout();
     window.location.href = "/login";
   }
@@ -41,6 +44,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     } finally {
       setRetrying(false);
     }
+  }
+
+  if (loggingOut) {
+    return (
+      <>
+        <div className="flex min-h-screen bg-background">
+          <div className="w-64 max-w-[85vw] border-r border-border bg-card shrink-0 hidden lg:block" />
+          <div className="flex-1 p-4 sm:p-6">
+            <PageSkeleton variant="list" />
+          </div>
+        </div>
+        <SubmittingOverlay
+          title="Logging you out..."
+          subtitle="Taking you to the login page."
+        />
+      </>
+    );
   }
 
   if (error) {

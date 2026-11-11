@@ -10,8 +10,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     # Shown only when a username collision is detected. Keeping this
     # generic avoids leaking which usernames are taken.
     USERNAME_TAKEN_MESSAGE = (
-        "We couldn't create your account. Try a different username, "
-        "or log in if you already have one."
+        "We couldn't create your account. Try to "
+        "log in if you already have one."
     )
 
     class Meta:

@@ -61,7 +61,6 @@ class BroadcastListSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
             return False
-        # The tutor is not a participant row but is always allowed in.
         if obj.tutor_id == user.id:
             return False
         preloaded = self.context.get("my_participations")
@@ -89,6 +88,8 @@ class BroadcastDetailSerializer(serializers.ModelSerializer):
     is_tutor = serializers.SerializerMethodField()
     my_participation = serializers.SerializerMethodField()
     can_join = serializers.SerializerMethodField()
+    is_completed = serializers.SerializerMethodField()
+    completed_at = serializers.SerializerMethodField()
     session = serializers.SerializerMethodField()
 
     class Meta:
@@ -151,6 +152,14 @@ class BroadcastDetailSerializer(serializers.ModelSerializer):
         if self.get_my_participation(obj):
             return False
         return obj.participants.count() < obj.capacity
+
+    def get_is_completed(self, obj):
+        return obj.completed_at is not None
+
+    def get_completed_at(self, obj):
+        if obj.completed_at is None:
+            return None
+        return obj.completed_at.isoformat()
 
     def get_session(self, obj):
         session = obj.sessions.first()

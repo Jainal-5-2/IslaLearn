@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { Save } from "lucide-react";
 import { getSubjects, createTopic, Subject } from "@/lib/api";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { SubmittingOverlay } from "@/components/submitting-overlay";
 
 export default function NewTopicPage() {
   const router = useRouter();
@@ -21,10 +22,14 @@ export default function NewTopicPage() {
   const [isPublished, setIsPublished] = useState(false);
 
   useEffect(() => {
-    // With cacheComponents, Next may keep this component mounted in a
-    // hidden state across navigations. Without this reset, the overlay
-    // reappears when the user navigates back to /topics/new.
+    // cacheComponents may keep this mounted across navigations, so reset
+    // on each visit or a stale submitting=true reappears as an overlay.
     setSubmitting(false);
+    setError("");
+    setSubjectId("");
+    setTitle("");
+    setDescription("");
+    setIsPublished(false);
     getSubjects()
       .then(setSubjects)
       .catch((err) =>
@@ -49,11 +54,9 @@ export default function NewTopicPage() {
         is_published: isPublished,
         free_page_count: 2,
       });
-      // Leave submitting=true so the overlay stays up during the route
-      // transition. This component unmounts when the edit page mounts,
-      // which is when the overlay should disappear. Resetting in a
-      // finally block is what caused the dead gap: the button went back
-      // to "Create Topic" while the next route was still loading.
+      // Do not reset submitting here. The overlay must stay up through
+      // the route transition; this component unmounts when the edit
+      // page mounts, which is what removes it.
       router.push(`/topics/${topic.id}/edit`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create topic");
@@ -66,26 +69,14 @@ export default function NewTopicPage() {
   }
 
   return (
-    // Fixed to the viewport: header pinned, form area scrolls. 4rem is
-    // the (app) layout's mobile header; 3rem is main's vertical padding
-    // on lg+.
     <div className="flex flex-col h-[calc(100dvh-4rem)] lg:h-[calc(100dvh-3rem)]">
       {submitting && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-3 text-center px-4">
-            <div className="h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-            <p className="text-sm font-medium text-foreground">
-              Creating your topic...
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Taking you to the page editor.
-            </p>
-          </div>
-        </div>
+        <SubmittingOverlay
+          title="Creating your topic..."
+          subtitle="Taking you to the page editor."
+        />
       )}
 
-      {/* Header: pinned, with the same max-w-2xl inner column so the
-          form and header stay aligned. */}
       <div className="shrink-0 max-w-2xl mx-auto w-full mb-6 sm:mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -103,9 +94,6 @@ export default function NewTopicPage() {
         </div>
       </div>
 
-      {/* Scroll region. min-h-0 lets the flex child shrink below its
-          content size so overflow-y-auto takes over. Inner max-w-2xl
-          keeps the form column the same width as the header. */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-2xl mx-auto w-full pb-2">
           <motion.form
